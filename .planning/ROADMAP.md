@@ -44,7 +44,7 @@
 4. Data API 的 trades、positions、activity 数据可以作为分析和校准数据接入。
 
 **UI hint**: no
-**Status**: Pending
+**Status**: Planned — 4 plans ready 2026-04-18
 
 ## Phase 3: Simulation Exchange & Portfolio Ledger
 
@@ -97,4 +97,4 @@
 - 若后续确认要做 reward/rebate 优化或 live bridge，可在当前里程碑之后新增 Phase 5.1 / Phase 6。
 
 ---
-*Last updated: 2026-04-18 after Phase 1 verification*
+*Last updated: 2026-04-18 after Phase 2 planning*
