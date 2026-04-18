@@ -1,21 +1,17 @@
 ---
-status: testing
+status: complete
 phase: 01-market-universe-metadata
 source:
   - 01-01-SUMMARY.md
   - 01-02-SUMMARY.md
   - 01-03-SUMMARY.md
 started: 2026-04-18T08:01:34Z
-updated: 2026-04-18T08:33:01Z
+updated: 2026-04-18T08:53:01Z
 ---
 
 ## Current Test
 
-number: 3
-name: Active Accepting Market Rows
-expected: |
-  Refresh http://localhost:8501, click `Sync markets` again, and wait for completion. The table should populate with active markets accepting orders, and each row should include `conditionId`, `yes token`, and `no token`.
-awaiting: user response
+[testing complete]
 
 ## Tests
 
@@ -29,25 +25,25 @@ result: pass
 
 ### 3. Active Accepting Market Rows
 expected: Refresh http://localhost:8501, click `Sync markets` again, and wait for completion. The table should populate with active markets accepting orders, and each row should include `conditionId`, `yes token`, and `no token`.
-result: [pending]
+result: pass
 reported: "no, 同步一直失败，从未成功过"
 diagnosis: "CLOB /simplified-markets first 20 pages did not intersect current Gamma active markets, causing 0 normalized rows and UI failure state."
 fix: "52b9b99 allows Gamma clobTokenIds fallback when no CLOB condition match is present, with source provenance marked as Gamma."
 
 ### 4. Immediate Filters
 expected: Changing category, minimum liquidity, end date range, restricted status, or question search updates the table immediately without an Apply button.
-result: [pending]
+result: pass
 
 ### 5. Source Traceability
 expected: The table includes a `source` column that makes Gamma/CLOB provenance visible for human-readable metadata, normalized condition ID, and token fields.
-result: [pending]
+result: pass
 
 ## Summary
 
 total: 5
-passed: 2
+passed: 5
 issues: 0
-pending: 3
+pending: 0
 skipped: 0
 blocked: 0
 
