@@ -42,3 +42,22 @@ python -m polymarket_quant.services.backfill
 ```
 
 `POLYMARKET_TOP_N=50` is the default. The command expects Phase 1 market data in `data/markets.sqlite3`.
+
+## Phase 2 Realtime Collector
+
+The realtime collector subscribes to the Polymarket market WebSocket for top-N token IDs and writes raw events before normalized latest-state rows.
+
+Required environment:
+
+```bash
+export DATABASE_URL=postgresql://localhost/polymarket_quant
+export POLYMARKET_TOP_N=50
+```
+
+Run:
+
+```bash
+python -m polymarket_quant.services.realtime_collector
+```
+
+On reconnect, the collector records a gap interval and repairs the window with a REST snapshot plus recent price history marked as gap-filled data.
