@@ -3,13 +3,14 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable, Protocol
 
 from polymarket_quant.domain.market import (
     CanonicalMarket,
     MarketSourceMap,
     SourceLabel,
 )
+from polymarket_quant.storage.market_store import MarketStore
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,138 @@ class MarketSyncResult:
     skipped_count: int
     events: list[SyncEvent] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+
+
+class GammaMarketFetcher(Protocol):
+    def fetch_markets(self, limit: int = 500) -> list[dict[str, Any]]: ...
+
+
+class ClobMarketFetcher(Protocol):
+    def fetch_simplified_markets(
+        self, limit: int = 1000, max_pages: int = 20
+    ) -> list[dict[str, Any]]: ...
+
+
+class MarketSyncService:
+    def __init__(
+        self,
+        gamma_client: GammaMarketFetcher,
+        clob_client: ClobMarketFetcher,
+        store: MarketStore,
+        max_attempts: int = 3,
+    ) -> None:
+        if max_attempts < 1:
+            raise ValueError("max_attempts must be at least 1")
+        self.gamma_client = gamma_client
+        self.clob_client = clob_client
+        self.store = store
+        self.max_attempts = max_attempts
+
+    def sync_once(self) -> MarketSyncResult:
+        events: list[SyncEvent] = [
+            _event("Sync started", "System", "running", "Market universe sync started")
+        ]
+
+        try:
+            gamma_markets = self._fetch_with_retries(
+                events=events,
+                source="Gamma",
+                fetcher=self.gamma_client.fetch_markets,
+            )
+            clob_markets = self._fetch_with_retries(
+                events=events,
+                source="CLOB",
+                fetcher=self.clob_client.fetch_simplified_markets,
+            )
+            markets, skipped = normalize_markets(gamma_markets, clob_markets)
+            events.append(
+                _event(
+                    "Normalization completed",
+                    "Normalizer",
+                    "success",
+                    f"Normalized {len(markets)} markets; skipped {len(skipped)}",
+                )
+            )
+            self.store.init_schema()
+            written_count = self.store.upsert_markets(markets)
+            events.append(
+                _event(
+                    "Sync succeeded",
+                    "System",
+                    "success",
+                    "Market universe updated",
+                )
+            )
+            return MarketSyncResult(
+                written_count=written_count,
+                skipped_count=len(skipped),
+                events=events,
+                errors=skipped,
+            )
+        except Exception as error:
+            message = str(error)
+            events.append(_event("Sync failed", "System", "failed", message))
+            return MarketSyncResult(
+                written_count=0,
+                skipped_count=0,
+                events=events,
+                errors=[message],
+            )
+
+    def _fetch_with_retries(
+        self,
+        events: list[SyncEvent],
+        source: str,
+        fetcher: Callable[[], list[dict[str, Any]]],
+    ) -> list[dict[str, Any]]:
+        for attempt in range(1, self.max_attempts + 1):
+            events.append(
+                _event(
+                    f"{source} fetch started",
+                    source,
+                    "running",
+                    f"Fetching {source} markets",
+                )
+            )
+            try:
+                markets = fetcher()
+            except Exception as error:
+                if attempt >= self.max_attempts:
+                    events.append(
+                        _event(
+                            "Retry failed",
+                            source,
+                            "failed",
+                            f"{source} request failed after {attempt} attempts: {error}",
+                        )
+                    )
+                    raise
+
+                retry_prefix = (
+                    "Retrying Gamma after request failure"
+                    if source == "Gamma"
+                    else f"Retrying {source} after request failure"
+                )
+                retry_message = (
+                    f"{retry_prefix} (attempt {attempt + 1}/{self.max_attempts}): "
+                    f"{error}"
+                )
+                events.append(
+                    _event("Retry scheduled", source, "retrying", retry_message)
+                )
+                continue
+
+            events.append(
+                _event(
+                    f"{source} fetch completed",
+                    source,
+                    "success",
+                    f"Fetched {len(markets)} {source} markets",
+                )
+            )
+            return markets
+
+        raise RuntimeError(f"{source} request failed without retry result")
 
 
 def normalize_markets(
@@ -108,6 +241,16 @@ def normalize_markets(
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _event(step: str, source: str, status: str, message: str) -> SyncEvent:
+    return SyncEvent(
+        timestamp=utc_now(),
+        step=step,
+        source=source,
+        status=status,
+        message=message,
+    )
 
 
 def _first_present(payload: dict[str, Any], *keys: str) -> Any:

@@ -13,9 +13,11 @@ from polymarket_quant.adapters.polymarket import (
 )
 from polymarket_quant.domain.market import SourceLabel
 from polymarket_quant.services.market_sync import (
+    MarketSyncService,
     SyncEvent,
     normalize_markets,
 )
+from polymarket_quant.storage.market_store import MarketStore
 
 
 def test_gamma_client_fetches_active_open_markets() -> None:
@@ -147,3 +149,94 @@ def test_sync_event_contract_exists() -> None:
     )
 
     assert event.source == "Gamma"
+
+
+class FakeGammaClient:
+    def __init__(self, markets: list[dict[str, object]] | None = None) -> None:
+        self.markets = markets or []
+
+    def fetch_markets(self, limit: int = 500) -> list[dict[str, object]]:
+        return self.markets
+
+
+class FakeClobClient:
+    def __init__(self, markets: list[dict[str, object]] | None = None) -> None:
+        self.markets = markets or []
+
+    def fetch_simplified_markets(
+        self, limit: int = 1000, max_pages: int = 20
+    ) -> list[dict[str, object]]:
+        return self.markets
+
+
+class FailingGammaClient:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def fetch_markets(self, limit: int = 500) -> list[dict[str, object]]:
+        self.calls += 1
+        raise RuntimeError("temporary Gamma outage")
+
+
+def test_sync_writes_only_valid_markets_to_store(tmp_db_path) -> None:
+    valid_condition = "0x" + "a" * 64
+    invalid_condition = "0x" + "b" * 64
+    service = MarketSyncService(
+        gamma_client=FakeGammaClient(
+            [
+                gamma_market(conditionId=valid_condition),
+                gamma_market(conditionId=invalid_condition),
+            ]
+        ),
+        clob_client=FakeClobClient(
+            [
+                clob_market(condition_id=valid_condition),
+                clob_market(condition_id=invalid_condition, accepting_orders=False),
+            ]
+        ),
+        store=MarketStore(tmp_db_path),
+    )
+
+    result = service.sync_once()
+    stored = MarketStore(tmp_db_path).list_markets()
+
+    assert result.written_count == 1
+    assert result.skipped_count == 1
+    assert [market.condition_id for market in stored] == [valid_condition]
+    assert [event.step for event in result.events] == [
+        "Sync started",
+        "Gamma fetch started",
+        "Gamma fetch completed",
+        "CLOB fetch started",
+        "CLOB fetch completed",
+        "Normalization completed",
+        "Sync succeeded",
+    ]
+
+
+def test_sync_emits_retry_and_failure_events(tmp_db_path) -> None:
+    gamma_client = FailingGammaClient()
+    service = MarketSyncService(
+        gamma_client=gamma_client,
+        clob_client=FakeClobClient(),
+        store=MarketStore(tmp_db_path),
+        max_attempts=2,
+    )
+
+    result = service.sync_once()
+
+    assert gamma_client.calls == 2
+    assert result.written_count == 0
+    assert result.errors == ["temporary Gamma outage"]
+    assert [event.step for event in result.events] == [
+        "Sync started",
+        "Gamma fetch started",
+        "Retry scheduled",
+        "Gamma fetch started",
+        "Retry failed",
+        "Sync failed",
+    ]
+    assert any(
+        "Retrying Gamma after request failure" in event.message
+        for event in result.events
+    )
