@@ -146,3 +146,11 @@ def test_dataframe_filter_handles_empty_input() -> None:
     filtered = apply_ui_filters(df, {"question_search": "anything"})
 
     assert filtered.empty
+
+
+def test_readme_documents_phase1_ui_run_command() -> None:
+    readme = Path("README.md").read_text()
+
+    assert "## Phase 1 Market Universe UI" in readme
+    assert "streamlit run src/polymarket_quant/ui/market_universe_app.py" in readme
+    assert "active + accepting orders" in readme
