@@ -7,9 +7,9 @@
 
 ### Market Universe
 
-- [ ] **MKT-01**: 用户可以从 Gamma API 同步活跃 markets、events 和 tags，并建立本地 market universe
-- [ ] **MKT-02**: 用户可以按类别、到期时间、流动性、成交活跃度和 accepting-orders 状态筛选候选市场
-- [ ] **MKT-03**: 用户可以查看每个市场的 `conditionId`、Yes/No `tokenId`、tick size、min size、neg-risk、fees 和 rewards 元数据
+- [x] **MKT-01**: 用户可以从 Gamma API 同步活跃 markets、events 和 tags，并建立本地 market universe
+- [x] **MKT-02**: 用户可以按类别、到期时间、流动性、成交活跃度和 accepting-orders 状态筛选候选市场
+- [x] **MKT-03**: 用户可以查看每个市场的 `conditionId`、Yes/No `tokenId`、tick size、min size、neg-risk、fees 和 rewards 元数据
 
 ### Market Data
 
@@ -69,9 +69,9 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MKT-01 | Phase 1 | Pending |
-| MKT-02 | Phase 1 | Pending |
-| MKT-03 | Phase 1 | Pending |
+| MKT-01 | Phase 1 | Complete |
+| MKT-02 | Phase 1 | Complete |
+| MKT-03 | Phase 1 | Complete |
 | DATA-01 | Phase 2 | Pending |
 | DATA-02 | Phase 2 | Pending |
 | DATA-03 | Phase 2 | Pending |
@@ -96,4 +96,4 @@
 
 ---
 *Requirements defined: 2026-04-18*
-*Last updated: 2026-04-18 after initial definition*
+*Last updated: 2026-04-18 after Phase 1 verification*

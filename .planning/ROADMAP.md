@@ -29,7 +29,7 @@
 3. 用户可以基于 category、liquidity、endDate、restricted、acceptingOrders 等条件筛选市场 universe。
 
 **UI hint**: no
-**Status**: In Review — 3/3 execution plans complete
+**Status**: Complete — verified 2026-04-18
 
 ## Phase 2: Historical & Real-Time Data Platform
 
@@ -97,4 +97,4 @@
 - 若后续确认要做 reward/rebate 优化或 live bridge，可在当前里程碑之后新增 Phase 5.1 / Phase 6。
 
 ---
-*Last updated: 2026-04-18 after Phase 1 Plan 03 execution*
+*Last updated: 2026-04-18 after Phase 1 verification*
