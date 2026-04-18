@@ -61,3 +61,23 @@ python -m polymarket_quant.services.realtime_collector
 ```
 
 On reconnect, the collector records a gap interval and repairs the window with a REST snapshot plus recent price history marked as gap-filled data.
+
+## Phase 2 Market Data Monitor
+
+Run the Phase 2 browser page:
+
+```bash
+streamlit run src/polymarket_quant/ui/market_data_app.py
+```
+
+The page shows latest bid/ask, spread, midpoint, last trade, recent price curve, source, and gap-fill markers.
+
+Final smoke checks:
+
+```bash
+pytest -q
+python -m polymarket_quant.services.backfill
+python -m polymarket_quant.services.realtime_collector
+```
+
+Live commands require `DATABASE_URL`, Phase 1 market universe data, and public API connectivity.

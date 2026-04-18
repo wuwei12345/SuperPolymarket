@@ -34,3 +34,19 @@ LAYOUT_REGIONS = {
     "table": "right",
     "timeline": "bottom-collapsible",
 }
+
+MARKET_DATA_PAGE_TITLE = "Market Data Monitor"
+MARKET_DATA_COLUMNS = [
+    "question",
+    "token_id",
+    "outcome",
+    "best_bid",
+    "best_ask",
+    "spread",
+    "midpoint",
+    "last_trade_price",
+    "source",
+    "gap_fill",
+]
+MARKET_DATA_REQUIRED_SECTIONS = ["latest table", "price curve", "timeline log"]
+MARKET_DATA_FORBIDDEN_COPY = ["Trade", "Order", "Wallet", "PnL", "Position"]
