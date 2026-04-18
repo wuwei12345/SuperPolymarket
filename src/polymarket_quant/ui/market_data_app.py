@@ -46,7 +46,10 @@ def apply_market_data_filters(
     token_search = token_search.strip().lower()
     if token_search and "token_id" in result:
         result = result[
-            result["token_id"].fillna("").str.lower().str.contains(token_search)
+            result["token_id"]
+            .fillna("")
+            .str.lower()
+            .str.contains(token_search, regex=False)
         ]
     if not show_gap_rows and "gap_fill" in result:
         result = result[result["gap_fill"] != True]  # noqa: E712

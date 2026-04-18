@@ -335,7 +335,12 @@ class GapFillService:
             (gap_ended_at - timedelta(minutes=self.recent_history_minutes)).timestamp()
         )
         end_ts = int(gap_ended_at.timestamp())
-        service.backfill_top_tokens(start_ts=start_ts, end_ts=end_ts, gap_fill=True)
+        service.backfill_top_tokens(
+            start_ts=start_ts,
+            end_ts=end_ts,
+            gap_fill=True,
+            upsert_reference=False,
+        )
         return [
             _event(
                 "Gap fill completed",

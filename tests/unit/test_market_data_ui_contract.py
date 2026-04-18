@@ -81,6 +81,19 @@ def test_market_data_filters_apply_immediately_to_dataframe() -> None:
     assert filtered["token_id"].tolist() == ["token-a"]
 
 
+def test_market_data_token_search_treats_input_as_literal_text() -> None:
+    df = build_latest_dataframe(
+        [
+            {"token_id": "token-[a]", "gap_fill": False},
+            {"token_id": "token-b", "gap_fill": False},
+        ]
+    )
+
+    filtered = apply_market_data_filters(df, token_search="[a]")
+
+    assert filtered["token_id"].tolist() == ["token-[a]"]
+
+
 def test_market_data_ui_does_not_define_trading_controls() -> None:
     source = Path("src/polymarket_quant/ui/market_data_app.py").read_text()
 

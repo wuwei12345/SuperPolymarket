@@ -349,6 +349,22 @@ async def test_reconnect_records_gap_and_runs_gap_fill() -> None:
     assert any(event.step == "Gap fill completed" for event in result.events)
 
 
+@pytest.mark.asyncio
+async def test_gap_fill_does_not_overwrite_reference_tokens() -> None:
+    store = FakeStore()
+    gap_fill = GapFillService(FakeClobClient(), store)
+    collector = MarketRealtimeCollector(
+        FailingWsClient(),
+        store,
+        [reference_token("token-a")],
+        gap_fill_service=gap_fill,
+    )
+
+    await collector.collect_once()
+
+    assert store.reference_tokens == []
+
+
 def test_realtime_readme_and_entrypoint_are_documented() -> None:
     readme = Path("README.md").read_text()
     source = Path("src/polymarket_quant/services/realtime_collector.py").read_text()

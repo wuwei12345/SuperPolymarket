@@ -85,13 +85,15 @@ class MarketDataBackfillService:
         start_ts: int | None = None,
         end_ts: int | None = None,
         gap_fill: bool = False,
+        upsert_reference: bool = True,
     ) -> BackfillResult:
         events = [
             _event("Backfill started", "System", "running", "REST backfill started")
         ]
         self.store.init_schema()
         tokens = self.selector.select_top_tokens()
-        self.store.upsert_reference_tokens(tokens)
+        if upsert_reference:
+            self.store.upsert_reference_tokens(tokens)
         token_by_id = {token.token_id: token for token in tokens}
 
         raw_payload_count = 0
