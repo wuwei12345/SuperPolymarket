@@ -12,12 +12,11 @@
 
 ### Validated
 
-(None yet — ship to validate)
+- [x] 统一接入 Polymarket 官方 API，并建立可查询的 market universe — Validated in Phase 1
+- [x] 建立历史数据、实时流、重放链路三者一致的数据底座 — Validated in Phase 2 for public market data and research-grade replay
 
 ### Active
 
-- [ ] 统一接入 Polymarket 官方 API，并建立可查询的 market universe
-- [ ] 建立历史数据、实时流、重放链路三者一致的数据底座
 - [ ] 建立 Polymarket 风格的模拟撮合、仓位、PnL 与风险引擎
 - [ ] 建立可复现的策略研究、回测、实时仿真运行框架
 - [ ] 提供面向操作者的监控、告警与实验管理能力
@@ -73,4 +72,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-18 after initialization*
+*Last updated: 2026-04-18 after Phase 2 verification*

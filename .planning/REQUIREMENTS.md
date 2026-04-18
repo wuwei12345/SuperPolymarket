@@ -13,9 +13,9 @@
 
 ### Market Data
 
-- [ ] **DATA-01**: 用户可以批量抓取并持久化 orderbook、prices、midpoints、spreads 和 price history 数据
-- [ ] **DATA-02**: 用户可以通过市场 WebSocket 订阅指定 `tokenId` 的 `book`、`price_change`、`best_bid_ask` 和 `last_trade_price` 事件
-- [ ] **DATA-03**: 用户可以将实时市场事件写入可回放存储，并按时间窗口重建盘口状态
+- [x] **DATA-01**: 用户可以批量抓取并持久化 orderbook、prices、midpoints、spreads 和 price history 数据
+- [x] **DATA-02**: 用户可以通过市场 WebSocket 订阅指定 `tokenId` 的 `book`、`price_change`、`best_bid_ask` 和 `last_trade_price` 事件
+- [x] **DATA-03**: 用户可以将实时市场事件写入可回放存储，并按时间窗口重建盘口状态
 - [ ] **DATA-04**: 用户可以同步 Data API 的 positions、trades 和 activity 数据，用于校准和分析
 
 ### Strategy Framework
@@ -72,10 +72,10 @@
 | MKT-01 | Phase 1 | Complete |
 | MKT-02 | Phase 1 | Complete |
 | MKT-03 | Phase 1 | Complete |
-| DATA-01 | Phase 2 | Pending |
-| DATA-02 | Phase 2 | Pending |
-| DATA-03 | Phase 2 | Pending |
-| DATA-04 | Phase 2 | Pending |
+| DATA-01 | Phase 2 | Complete |
+| DATA-02 | Phase 2 | Complete |
+| DATA-03 | Phase 2 | Complete |
+| DATA-04 | Phase 2 | Deferred scope note |
 | SIM-01 | Phase 3 | Pending |
 | SIM-02 | Phase 3 | Pending |
 | SIM-03 | Phase 3 | Pending |
