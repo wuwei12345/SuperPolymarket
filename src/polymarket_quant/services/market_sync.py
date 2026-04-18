@@ -181,25 +181,30 @@ def normalize_markets(
             continue
 
         clob = clob_by_condition.get(str(condition_id))
-        if not clob:
-            skipped.append(f"{condition_id}: missing CLOB simplified market")
-            continue
+        has_clob_match = clob is not None
+        clob_payload = clob or {}
 
-        active = bool(gamma.get("active", True)) and bool(clob.get("active", True))
-        closed = bool(gamma.get("closed", False)) or bool(clob.get("closed", False))
-        archived = bool(clob.get("archived", False))
+        active = bool(gamma.get("active", True)) and bool(
+            clob_payload.get("active", True)
+        )
+        closed = bool(gamma.get("closed", False)) or bool(
+            clob_payload.get("closed", False)
+        )
+        archived = bool(clob_payload.get("archived", False))
         accepting_orders = bool(
-            clob.get(
+            clob_payload.get(
                 "accepting_orders",
                 gamma.get("acceptingOrders", gamma.get("accepting_orders", False)),
             )
         )
 
-        yes_token_id, no_token_id = _extract_yes_no_tokens(clob, gamma)
+        yes_token_id, no_token_id, token_source = _extract_yes_no_tokens(
+            clob_payload, gamma
+        )
         try:
             market = CanonicalMarket(
                 market_id=_optional_string(_first_present(gamma, "id", "marketId")),
-                question=str(gamma.get("question") or clob.get("question") or ""),
+                question=str(gamma.get("question") or clob_payload.get("question") or ""),
                 category=_optional_string(
                     _first_present(gamma, "category", "eventCategory", "groupItemTitle")
                 ),
@@ -220,9 +225,11 @@ def normalize_markets(
                     category=SourceLabel.GAMMA,
                     liquidity=SourceLabel.GAMMA,
                     end_date=SourceLabel.GAMMA,
-                    condition_id=SourceLabel.NORMALIZED,
-                    yes_token_id=SourceLabel.CLOB,
-                    no_token_id=SourceLabel.CLOB,
+                    condition_id=(
+                        SourceLabel.NORMALIZED if has_clob_match else SourceLabel.GAMMA
+                    ),
+                    yes_token_id=token_source,
+                    no_token_id=token_source,
                 ),
                 raw_gamma=gamma,
                 raw_clob=clob,
@@ -288,23 +295,33 @@ def _optional_bool(value: Any) -> bool | None:
 
 def _extract_yes_no_tokens(
     clob: dict[str, Any], gamma: dict[str, Any]
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, str | None, SourceLabel]:
     clob_tokens = clob.get("tokens") or []
     yes_token = _token_for_outcome(clob_tokens, "yes")
     no_token = _token_for_outcome(clob_tokens, "no")
     if yes_token and no_token:
-        return yes_token, no_token
+        return yes_token, no_token, SourceLabel.CLOB
 
     parsed_gamma_tokens = _parse_clob_token_ids(gamma.get("clobTokenIds"))
     if len(parsed_gamma_tokens) >= 2:
-        return yes_token or parsed_gamma_tokens[0], no_token or parsed_gamma_tokens[1]
+        if yes_token and no_token:
+            return yes_token, no_token, SourceLabel.CLOB
+        return (
+            yes_token or parsed_gamma_tokens[0],
+            no_token or parsed_gamma_tokens[1],
+            SourceLabel.GAMMA,
+        )
 
     positional_clob_tokens = [_token_id(token) for token in clob_tokens]
     positional_clob_tokens = [token for token in positional_clob_tokens if token]
     if len(positional_clob_tokens) >= 2:
-        return yes_token or positional_clob_tokens[0], no_token or positional_clob_tokens[1]
+        return (
+            yes_token or positional_clob_tokens[0],
+            no_token or positional_clob_tokens[1],
+            SourceLabel.CLOB,
+        )
 
-    return yes_token, no_token
+    return yes_token, no_token, SourceLabel.CLOB
 
 
 def _token_for_outcome(tokens: Iterable[dict[str, Any]], outcome: str) -> str | None:

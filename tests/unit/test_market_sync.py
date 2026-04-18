@@ -78,6 +78,7 @@ def gamma_market(**overrides: object) -> dict[str, object]:
         "conditionId": "0x" + "a" * 64,
         "active": True,
         "closed": False,
+        "acceptingOrders": True,
         "restricted": False,
         "clobTokenIds": '["gamma-yes", "gamma-no"]',
     }
@@ -137,6 +138,19 @@ def test_normalize_source_map_marks_gamma_and_clob_fields() -> None:
     assert market.source_map.condition_id is SourceLabel.NORMALIZED
     assert market.source_map.yes_token_id is SourceLabel.CLOB
     assert market.source_map.no_token_id is SourceLabel.CLOB
+
+
+def test_normalize_uses_gamma_token_fallback_when_clob_match_missing() -> None:
+    markets, skipped = normalize_markets([gamma_market()], [])
+
+    assert skipped == []
+    [market] = markets
+    assert market.yes_token_id == "gamma-yes"
+    assert market.no_token_id == "gamma-no"
+    assert market.source_map.condition_id is SourceLabel.GAMMA
+    assert market.source_map.yes_token_id is SourceLabel.GAMMA
+    assert market.source_map.no_token_id is SourceLabel.GAMMA
+    assert market.raw_clob is None
 
 
 def test_sync_event_contract_exists() -> None:
