@@ -148,6 +148,14 @@ def test_dataframe_filter_handles_empty_input() -> None:
     assert filtered.empty
 
 
+def test_question_filter_treats_input_as_plain_text() -> None:
+    df = build_market_dataframe([market(question="Will [brackets] match?")])
+
+    filtered = apply_ui_filters(df, {"question_search": "[brackets]"})
+
+    assert filtered["question"].tolist() == ["Will [brackets] match?"]
+
+
 def test_readme_documents_phase1_ui_run_command() -> None:
     readme = Path("README.md").read_text()
 

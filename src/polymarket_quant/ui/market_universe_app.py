@@ -50,7 +50,10 @@ def apply_ui_filters(df: pd.DataFrame, filters: dict[str, Any]) -> pd.DataFrame:
 
     if question_search and "question" in result:
         result = result[
-            result["question"].fillna("").str.lower().str.contains(question_search)
+            result["question"]
+            .fillna("")
+            .str.lower()
+            .str.contains(question_search, regex=False)
         ]
     if category and category != "All" and "category" in result:
         result = result[result["category"] == category]
