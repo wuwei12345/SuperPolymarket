@@ -58,6 +58,7 @@ completed: 2026-04-18
 ## Task Commits
 
 1. **Wave 3 realtime collector tasks** - `1225a16` (feat)
+2. **Gap fill reference preservation** - `b1f5be9` (fix)
 
 ## Files Created/Modified
 
@@ -80,7 +81,7 @@ Grouped the four tightly coupled realtime tasks into one commit because the adap
 
 ## Issues Encountered
 
-None.
+Post-implementation review found that gap-fill reuse of the backfill service could upsert placeholder reference token metadata. The service now calls backfill with `upsert_reference=False` during gap repair, and `test_gap_fill_does_not_overwrite_reference_tokens` covers the behavior.
 
 ## User Setup Required
 
@@ -93,7 +94,7 @@ The inspection UI can now read latest normalized state and show whether rows cam
 ## Self-Check: PASSED
 
 - `pytest tests/unit/test_realtime_collector.py -q` passed.
-- `pytest -q` passed with 58 tests.
+- `pytest -q` passed with 67 tests after the gap-fill fix.
 - Required WS payload, event type, scheduler, and gap-fill strings were verified with `rg`.
 
 ---

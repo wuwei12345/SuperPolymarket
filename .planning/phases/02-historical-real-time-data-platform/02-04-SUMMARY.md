@@ -57,6 +57,7 @@ completed: 2026-04-18
 ## Task Commits
 
 1. **Wave 4 query/UI tasks** - `6c0c68e` (feat)
+2. **Literal token search hardening** - `b1f5be9` (fix)
 
 ## Files Created/Modified
 
@@ -81,7 +82,7 @@ Grouped the four tightly coupled query/UI tasks into one commit because service,
 
 ## Issues Encountered
 
-None.
+Post-implementation review found token search should use literal matching to avoid regex input failures. The monitor now uses `regex=False`, covered by `test_market_data_token_search_treats_input_as_literal_text`.
 
 ## User Setup Required
 
@@ -94,7 +95,7 @@ Phase 3 simulation work can consume latest market state and price series through
 ## Self-Check: PASSED
 
 - `pytest tests/unit/test_market_data_queries.py tests/unit/test_market_data_ui_contract.py -q` passed.
-- `pytest -q` passed with 65 tests.
+- `pytest -q` passed with 67 tests after literal-search hardening.
 - Required monitor copy and forbidden UI control checks were verified with `rg`.
 
 ---
