@@ -23,3 +23,22 @@ export DATABASE_URL=postgresql://localhost/polymarket_quant
 ```
 
 Phase 1 SQLite MarketStore remains the market universe source; Phase 2 imports reference tokens into PostgreSQL. The Phase 2 store uses separate PostgreSQL schemas for reference data, raw payloads, normalized market data, and query views.
+
+## Phase 2 REST Backfill
+
+REST backfill selects top active + accepting tokens from the Phase 1 universe and writes CLOB price history plus current book snapshots into PostgreSQL.
+
+Required environment:
+
+```bash
+export DATABASE_URL=postgresql://localhost/polymarket_quant
+export POLYMARKET_TOP_N=50
+```
+
+Run:
+
+```bash
+python -m polymarket_quant.services.backfill
+```
+
+`POLYMARKET_TOP_N=50` is the default. The command expects Phase 1 market data in `data/markets.sqlite3`.
