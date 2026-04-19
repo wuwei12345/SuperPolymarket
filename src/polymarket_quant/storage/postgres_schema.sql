@@ -2,6 +2,7 @@ CREATE SCHEMA IF NOT EXISTS reference;
 CREATE SCHEMA IF NOT EXISTS raw;
 CREATE SCHEMA IF NOT EXISTS normalized;
 CREATE SCHEMA IF NOT EXISTS views;
+CREATE SCHEMA IF NOT EXISTS simulation;
 
 CREATE TABLE IF NOT EXISTS reference.tokens (
     token_id TEXT PRIMARY KEY,
@@ -208,3 +209,142 @@ SELECT
     p.gap_fill
 FROM normalized.price_history p
 LEFT JOIN reference.tokens t ON t.token_id = p.token_id;
+
+CREATE TABLE IF NOT EXISTS simulation.orders (
+    client_order_id TEXT PRIMARY KEY,
+    strategy_id TEXT NOT NULL,
+    token_id TEXT NOT NULL,
+    condition_id TEXT,
+    side TEXT NOT NULL CHECK (side IN ('BUY', 'SELL')),
+    order_type TEXT NOT NULL CHECK (order_type IN ('LIMIT')),
+    price NUMERIC NOT NULL,
+    size NUMERIC NOT NULL,
+    remaining_size NUMERIC NOT NULL,
+    status TEXT NOT NULL,
+    time_in_force TEXT NOT NULL CHECK (time_in_force IN ('GTC', 'GTD')),
+    post_only BOOLEAN NOT NULL DEFAULT false,
+    expires_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL,
+    accepted_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL,
+    reject_reason TEXT
+);
+
+CREATE TABLE IF NOT EXISTS simulation.order_transitions (
+    id BIGSERIAL PRIMARY KEY,
+    client_order_id TEXT NOT NULL,
+    from_status TEXT,
+    to_status TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS simulation.fills (
+    fill_id TEXT PRIMARY KEY,
+    client_order_id TEXT NOT NULL,
+    strategy_id TEXT NOT NULL,
+    token_id TEXT NOT NULL,
+    condition_id TEXT,
+    side TEXT NOT NULL CHECK (side IN ('BUY', 'SELL')),
+    price NUMERIC NOT NULL,
+    size NUMERIC NOT NULL,
+    fee NUMERIC NOT NULL DEFAULT 0,
+    liquidity_role TEXT NOT NULL CHECK (liquidity_role IN ('MAKER', 'TAKER')),
+    source_snapshot_id BIGINT,
+    source_ts TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS simulation.cash_ledger (
+    entry_id TEXT PRIMARY KEY,
+    strategy_id TEXT NOT NULL,
+    client_order_id TEXT,
+    fill_id TEXT,
+    delta NUMERIC NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS simulation.position_ledger (
+    entry_id TEXT PRIMARY KEY,
+    strategy_id TEXT NOT NULL,
+    token_id TEXT NOT NULL,
+    condition_id TEXT,
+    client_order_id TEXT,
+    fill_id TEXT,
+    delta NUMERIC NOT NULL,
+    price NUMERIC NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS simulation.risk_decisions (
+    id BIGSERIAL PRIMARY KEY,
+    decision TEXT NOT NULL CHECK (decision IN ('ALLOW', 'WARN', 'REJECT')),
+    client_order_id TEXT NOT NULL,
+    token_id TEXT NOT NULL,
+    condition_id TEXT,
+    checks JSONB NOT NULL,
+    reasons TEXT[] NOT NULL,
+    warnings TEXT[] NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS simulation.valuation_snapshots (
+    id BIGSERIAL PRIMARY KEY,
+    strategy_id TEXT NOT NULL,
+    token_id TEXT NOT NULL,
+    condition_id TEXT,
+    quantity NUMERIC NOT NULL,
+    average_cost NUMERIC NOT NULL,
+    mark_price NUMERIC NOT NULL,
+    mark_reason TEXT NOT NULL,
+    realized_pnl NUMERIC NOT NULL,
+    unrealized_pnl NUMERIC NOT NULL,
+    core_pnl NUMERIC NOT NULL,
+    reward_pnl NUMERIC NOT NULL DEFAULT 0,
+    total_pnl NUMERIC NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sim_orders_strategy
+    ON simulation.orders (strategy_id);
+CREATE INDEX IF NOT EXISTS idx_sim_orders_token
+    ON simulation.orders (token_id);
+CREATE INDEX IF NOT EXISTS idx_sim_fills_order
+    ON simulation.fills (client_order_id);
+CREATE INDEX IF NOT EXISTS idx_sim_cash_strategy
+    ON simulation.cash_ledger (strategy_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sim_position_strategy_token
+    ON simulation.position_ledger (strategy_id, token_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sim_risk_order
+    ON simulation.risk_decisions (client_order_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sim_valuation_strategy_token
+    ON simulation.valuation_snapshots (strategy_id, token_id, created_at DESC);
+
+CREATE OR REPLACE VIEW views.simulation_positions AS
+SELECT
+    strategy_id,
+    token_id,
+    condition_id,
+    SUM(delta) AS quantity
+FROM simulation.position_ledger
+GROUP BY strategy_id, token_id, condition_id;
+
+CREATE OR REPLACE VIEW views.simulation_pnl AS
+SELECT DISTINCT ON (strategy_id, token_id)
+    strategy_id,
+    token_id,
+    condition_id,
+    quantity,
+    average_cost,
+    mark_price,
+    mark_reason,
+    realized_pnl,
+    unrealized_pnl,
+    core_pnl,
+    reward_pnl,
+    total_pnl,
+    created_at
+FROM simulation.valuation_snapshots
+ORDER BY strategy_id, token_id, created_at DESC;
