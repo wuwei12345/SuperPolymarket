@@ -81,3 +81,19 @@ python -m polymarket_quant.services.realtime_collector
 ```
 
 Live commands require `DATABASE_URL`, Phase 1 market universe data, and public API connectivity.
+
+## Phase 3 Paper Exchange
+
+Phase 3 provides a simulation-only paper exchange boundary for `OrderIntent` submissions. It supports limit orders, marketable limit orders, cancel/replace, `client_order_id`, depth-driven paper fills, partial fills, tick-size and minimum-size checks, submit/cancel latency, cash/position/fill/fee ledger entries, conservative mark valuation, realized/unrealized PnL, and structured `RiskDecision` output.
+
+Phase 3 does not place live orders or use wallet authentication.
+
+### Deferred beyond P0
+
+- GTD expiry
+- post_only enforcement
+- portfolio-level hard risk
+- reward estimate
+- market/FOK/FAK orders
+- builder fees
+- high-fidelity tick-by-tick replay fills

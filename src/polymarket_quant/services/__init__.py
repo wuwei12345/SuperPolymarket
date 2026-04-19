@@ -1,5 +1,9 @@
 """Application services."""
 
+from polymarket_quant.services.paper_exchange import (
+    PaperExchangeService,
+    PaperOrderResult,
+)
 from polymarket_quant.services.realtime_collector import (
     GapFillService,
     MarketRealtimeCollector,
@@ -11,5 +15,7 @@ __all__ = [
     "GapFillService",
     "MarketDataQueryService",
     "MarketRealtimeCollector",
+    "PaperExchangeService",
+    "PaperOrderResult",
     "UniverseSelector",
 ]
