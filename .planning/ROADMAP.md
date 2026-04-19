@@ -59,7 +59,7 @@
 4. 风险限额可以在下单前阻止超限订单，并在组合视角展示暴露。
 
 **UI hint**: no
-**Status**: Pending
+**Status**: Planned — 5 plans created 2026-04-19
 
 ## Phase 4: Strategy Research Workbench
 
@@ -97,4 +97,4 @@
 - 若后续确认要做 reward/rebate 优化或 live bridge，可在当前里程碑之后新增 Phase 5.1 / Phase 6。
 
 ---
-*Last updated: 2026-04-18 after Phase 2 verification*
+*Last updated: 2026-04-19 after Phase 3 planning*
