@@ -14,10 +14,10 @@
 
 - [x] 统一接入 Polymarket 官方 API，并建立可查询的 market universe — Validated in Phase 1
 - [x] 建立历史数据、实时流、重放链路三者一致的数据底座 — Validated in Phase 2 for public market data and research-grade replay
+- [x] 建立 Polymarket 风格的模拟撮合、仓位、PnL 与风险引擎 — Validated in Phase 3 for simulation-only paper execution
 
 ### Active
 
-- [ ] 建立 Polymarket 风格的模拟撮合、仓位、PnL 与风险引擎
 - [ ] 建立可复现的策略研究、回测、实时仿真运行框架
 - [ ] 提供面向操作者的监控、告警与实验管理能力
 
@@ -49,10 +49,10 @@
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | 项目首版只覆盖 Polymarket | 用户目标就是验证 Polymarket 量化可行性，过早抽象多交易所只会稀释核心问题 | — Pending |
-| 全量接入官方 Gamma/Data/CLOB/WebSocket/Subgraph 能力，但 v1 只开放模拟执行 | 数据面已经足够支撑策略研究；真实执行牵涉合规和账户控制，应该后置 | — Pending |
+| 全量接入官方 Gamma/Data/CLOB/WebSocket/Subgraph 能力，但 v1 只开放模拟执行 | 数据面已经足够支撑策略研究；真实执行牵涉合规和账户控制，应该后置 | Simulation execution boundary validated in Phase 3 |
 | 采用 Python-first 架构 | 官方存在 Python 客户端，且研究、特征工程、回测生态更适合 Python | — Pending |
-| 采用 event-driven 数据与执行模型 | Polymarket 的盘口、成交和用户订单更新天然是事件流，适合统一回放与实时仿真 | — Pending |
-| 从第一阶段开始保存原始 WebSocket 事件与标准化表 | 高保真回测和问题排查都依赖可重放的原始事实流 | — Pending |
+| 采用 event-driven 数据与执行模型 | Polymarket 的盘口、成交和用户订单更新天然是事件流，适合统一回放与实时仿真 | Market-data events validated in Phase 2; paper execution facts validated in Phase 3 |
+| 从第一阶段开始保存原始 WebSocket 事件与标准化表 | 高保真回测和问题排查都依赖可重放的原始事实流 | Raw market event persistence validated in Phase 2 |
 
 ## Evolution
 
@@ -72,4 +72,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-18 after Phase 2 verification*
+*Last updated: 2026-04-19 after Phase 3 verification*

@@ -26,13 +26,13 @@
 
 ### Simulation Execution
 
-- [ ] **SIM-01**: 用户可以把策略信号转换为 Polymarket 风格订单意图，包括 side、price、size 和 order type
-- [ ] **SIM-02**: 用户可以在模拟撮合中得到考虑 tick size、min size、盘口深度、部分成交、撤单和延迟的 fills
-- [ ] **SIM-03**: 用户可以查看订单生命周期、成交明细、仓位、现金余额以及 realized / unrealized PnL
+- [x] **SIM-01**: 用户可以把策略信号转换为 Polymarket 风格订单意图，包括 side、price、size 和 order type
+- [x] **SIM-02**: 用户可以在模拟撮合中得到考虑 tick size、min size、盘口深度、部分成交、撤单和延迟的 fills
+- [x] **SIM-03**: 用户可以查看订单生命周期、成交明细、仓位、现金余额以及 realized / unrealized PnL
 
 ### Risk & Portfolio
 
-- [ ] **RISK-01**: 用户可以配置单市场、单事件和组合级别的风险限额与最大敞口
+- [x] **RISK-01**: 用户可以配置单市场、单事件和组合级别的风险限额与最大敞口
 - [ ] **RISK-02**: 用户可以在市场关闭、不再接单、接近到期、流动性不足或 live 不可用时自动阻止新订单
 - [ ] **RISK-03**: 用户可以查看按市场、事件、策略和时间窗口聚合的收益、胜率、回撤和换手指标
 
@@ -76,10 +76,10 @@
 | DATA-02 | Phase 2 | Complete |
 | DATA-03 | Phase 2 | Complete |
 | DATA-04 | Phase 2 | Deferred scope note |
-| SIM-01 | Phase 3 | Pending |
-| SIM-02 | Phase 3 | Pending |
-| SIM-03 | Phase 3 | Pending |
-| RISK-01 | Phase 3 | Pending |
+| SIM-01 | Phase 3 | Complete |
+| SIM-02 | Phase 3 | Complete |
+| SIM-03 | Phase 3 | Complete |
+| RISK-01 | Phase 3 | Complete |
 | STRAT-01 | Phase 4 | Pending |
 | STRAT-02 | Phase 4 | Pending |
 | STRAT-03 | Phase 4 | Pending |
@@ -96,4 +96,4 @@
 
 ---
 *Requirements defined: 2026-04-18*
-*Last updated: 2026-04-18 after Phase 1 verification*
+*Last updated: 2026-04-19 after Phase 3 verification*
