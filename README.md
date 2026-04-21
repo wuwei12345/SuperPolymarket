@@ -97,3 +97,50 @@ Phase 3 does not place live orders or use wallet authentication.
 - market/FOK/FAK orders
 - builder fees
 - high-fidelity tick-by-tick replay fills
+
+## Phase 4 Strategy Runtime
+
+Phase 4 turns the simulator into a reproducible research runtime. The goal is not merely to run strategy code, but to produce explainable runs that can be replayed, compared, and audited.
+
+Strategies are Python classes with a stable lifecycle:
+
+```python
+class Strategy:
+    def on_init(self, ctx): ...
+    def on_event(self, event, ctx): ...
+    def on_clock(self, ts, ctx): ...
+    def on_finish(self, ctx): ...
+```
+
+Strategies emit target-based `Signal` objects such as `target_exposure` or `target_position`. A separate sizing and execution adapter translates those signals into `OrderIntent`, and realtime paper mode routes them through `PaperExchangeService`.
+
+Phase 4 supports three run modes from one config surface:
+
+- `replay`
+- `research`
+- `realtime paper`
+
+Primary entry point:
+
+```python
+from polymarket_quant.services import StrategyCliService
+
+cli = StrategyCliService("data/runs")
+result = cli.run(strategy, "config/phase4.yaml", events=events)
+```
+
+Config files can be YAML or JSON. The CLI resolves defaults before execution and persists the effective configuration into `manifest.json`.
+
+Each run writes a stable artifact directory keyed by `run_id`, including:
+
+- `manifest.json`
+- `signals.parquet`
+- `order_intents.parquet`
+- `orders.parquet`
+- `fills.parquet`
+- `positions.parquet`
+- `risk_decisions.parquet`
+- `strategy.log`
+- `framework.log`
+
+Run summaries are computed from factual artifacts, not log scraping. Phase 4 metrics include total return, realized/unrealized PnL, turnover, fill rate, cancel rate, average holding time, max drawdown, exposure peak, reject count, and slippage metrics.

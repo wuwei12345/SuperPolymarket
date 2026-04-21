@@ -47,6 +47,10 @@ class RealtimeStrategyRunner:
         self._cash = self._restore_cash()
         self._orders: dict[str, dict[str, object]] = {}
 
+    def on_init(self, timestamp: datetime) -> RealtimeExecutionResult:
+        signals = self.runtime.on_init(timestamp)
+        return self._dispatch_signals(signals)
+
     def on_event(self, event: StrategyEvent) -> RealtimeExecutionResult:
         signals = self.runtime.on_event(event)
         return self._dispatch_signals(signals)
