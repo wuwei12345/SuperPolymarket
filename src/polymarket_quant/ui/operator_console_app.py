@@ -11,8 +11,12 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - Streamlit is installed in normal app use.
     st = None  # type: ignore[assignment]
 
-from polymarket_quant.domain.operator import ConnectionState
+from polymarket_quant.domain.operator import ConnectionState, GlobalMode
 from polymarket_quant.services.operator_queries import OperatorFilters, OperatorQueryService
+from polymarket_quant.services.operator_safety import (
+    ModePreflightResult,
+    OperatorSafetyService,
+)
 from polymarket_quant.ui.contracts import (
     OPERATOR_CONSOLE_DETAIL_PANES,
     OPERATOR_CONSOLE_FILTERS,
@@ -116,6 +120,7 @@ def main(query_service: OperatorQueryService | None = None) -> None:
     with right:
         render_pnl_exposure_block(pnl_rows)
 
+    render_mode_switch(query_service, filters)
     st.subheader("Alerts Timeline")
     st.caption("read-only event flow with shared filters")
     st.dataframe(
@@ -123,6 +128,7 @@ def main(query_service: OperatorQueryService | None = None) -> None:
         use_container_width=True,
         hide_index=True,
     )
+    render_runs_artifacts_surface(query_service, filters)
 
 
 def render_shared_filters() -> OperatorFilters:
@@ -185,6 +191,50 @@ def render_status_band(status_band: dict[str, Any]) -> None:
             st.write(value)
 
 
+def render_mode_switch(
+    query_service: OperatorQueryService,
+    filters: OperatorFilters,
+    safety_service: OperatorSafetyService | None = None,
+) -> None:
+    if st is None:
+        return
+    safety_service = safety_service or OperatorSafetyService()
+    st.subheader("Mode Switch")
+    target_mode_label = st.selectbox(
+        "Target global mode",
+        ["replay", "paper", "live-disabled"],
+        key="target_global_mode",
+    )
+    if st.button("Run preflight", key="mode_preflight"):
+        st.session_state["mode_preflight_result"] = build_mode_preflight(
+            query_service,
+            target_mode=target_mode_label,
+            filters=filters,
+            safety_service=safety_service,
+        )
+
+    preflight: ModePreflightResult | None = st.session_state.get("mode_preflight_result")
+    if preflight is None:
+        st.caption("Run preflight before confirm.")
+        return
+
+    st.caption(f"preflight target={preflight.target_mode.value}")
+    if preflight.blockers:
+        st.error("\n".join(preflight.blockers))
+    if preflight.warnings:
+        st.warning("\n".join(preflight.warnings))
+    confirmed = st.checkbox("I confirm the global mode change", key="mode_switch_confirm")
+    if st.button(
+        "confirm mode switch",
+        key="confirm_mode_switch",
+        disabled=not preflight.allowed,
+    ):
+        if confirm_mode_switch(query_service, preflight, confirmed=confirmed):
+            st.success(f"Global mode changed to {preflight.target_mode.value}")
+        else:
+            st.warning("confirm is required before the mode changes.")
+
+
 def render_positions_orders_block(detail_rows: dict[str, list[dict[str, Any]]]) -> None:
     if st is None:
         return
@@ -208,6 +258,50 @@ def render_pnl_exposure_block(pnl_rows: list[dict[str, Any]]) -> None:
         use_container_width=True,
         hide_index=True,
     )
+
+
+def render_runs_artifacts_surface(
+    query_service: OperatorQueryService,
+    filters: OperatorFilters,
+) -> None:
+    if st is None:
+        return
+    with st.expander("Runs / Artifacts", expanded=False):
+        st.caption("secondary surface; not a homepage default pane")
+        st.dataframe(
+            pd.DataFrame(query_service.runs_artifacts(filters)),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
+def build_mode_preflight(
+    query_service: OperatorQueryService,
+    *,
+    target_mode: str,
+    filters: OperatorFilters | None = None,
+    safety_service: OperatorSafetyService | None = None,
+) -> ModePreflightResult:
+    filters = filters or OperatorFilters()
+    safety_service = safety_service or OperatorSafetyService()
+    status_band = query_service.status_band(filters)
+    return safety_service.preflight(
+        current_mode=status_band["global_mode"],
+        target_mode=_global_mode_from_label(target_mode),
+        connections=status_band["connections"],
+    )
+
+
+def confirm_mode_switch(
+    query_service: OperatorQueryService,
+    preflight: ModePreflightResult,
+    *,
+    confirmed: bool,
+) -> bool:
+    if not confirmed or not preflight.allowed or query_service.runtime_registry is None:
+        return False
+    query_service.runtime_registry.set_global_mode(preflight.target_mode)
+    return True
 
 
 def _render_connections_summary(connections: list[ConnectionState]) -> str:
@@ -236,6 +330,14 @@ def _format_timestamp(value: Any) -> str:
     if hasattr(value, "isoformat"):
         return value.isoformat()
     return str(value)
+
+
+def _global_mode_from_label(value: str) -> GlobalMode:
+    if value == "paper":
+        return GlobalMode.PAPER
+    if value == "replay":
+        return GlobalMode.REPLAY
+    return GlobalMode.LIVE_DISABLED
 
 
 def _inject_style() -> None:

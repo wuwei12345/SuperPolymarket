@@ -144,3 +144,23 @@ Each run writes a stable artifact directory keyed by `run_id`, including:
 - `framework.log`
 
 Run summaries are computed from factual artifacts, not log scraping. Phase 4 metrics include total return, realized/unrealized PnL, turnover, fill rate, cancel rate, average holding time, max drawdown, exposure peak, reject count, and slippage metrics.
+
+## Phase 5 Operator Console
+
+Run the Phase 5 browser page:
+
+```bash
+streamlit run src/polymarket_quant/ui/operator_console_app.py
+```
+
+The first screen is a single-page operator surface:
+
+- top status band for global mode, connection status, strategy state, alert summary, new-order block status, and last heartbeat
+- left shared filters for strategy, market/event, token, time window, mode, severity, and status
+- strategy-first overview table in the main area
+- two default detail blocks only: `Positions / Orders` and `PnL / Exposure`
+- read-only alert timeline at the bottom
+
+Mode changes are guarded. The console requires a `preflight` step first, shows blocking and warning reasons, and only applies the switch after explicit `confirm` input.
+
+`live-disabled` remains a protective boundary in v1. It is not a live-trading mode, and Phase 5 does not enable wallet auth or real order submission.
