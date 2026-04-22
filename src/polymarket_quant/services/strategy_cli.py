@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
@@ -10,6 +11,12 @@ from uuid import uuid4
 
 import yaml
 
+from polymarket_quant.domain.operator import (
+    GlobalMode,
+    LocalRunMode,
+    NewOrderBlockState,
+    StrategyRuntimeState,
+)
 from polymarket_quant.domain.market_data import BookLevel, BookSnapshot, utc_now
 from polymarket_quant.domain.strategy import (
     ResolvedRunConfig,
@@ -20,6 +27,7 @@ from polymarket_quant.domain.strategy import (
     UniverseSnapshot,
 )
 from polymarket_quant.services.experiment_metrics import ExperimentMetricsService
+from polymarket_quant.services.operator_runtime_registry import OperatorRuntimeRegistry
 from polymarket_quant.services.order_risk import MarketConstraints, RiskLimits
 from polymarket_quant.services.paper_exchange import PaperExchangeService
 from polymarket_quant.services.realtime_strategy_runner import (
@@ -57,10 +65,12 @@ class StrategyCliService:
         *,
         metrics_service: ExperimentMetricsService | None = None,
         git_commit: str = "workspace",
+        runtime_registry: OperatorRuntimeRegistry | None = None,
     ) -> None:
         self.artifact_root = Path(artifact_root)
         self.metrics_service = metrics_service or ExperimentMetricsService()
         self.git_commit = git_commit
+        self.runtime_registry = runtime_registry
 
     def load_config(self, path: str | Path) -> dict[str, Any]:
         config_path = Path(path)
@@ -129,29 +139,39 @@ class StrategyCliService:
         start_time = events[0].ts if events else utc_now()
         end_time = events[-1].ts if events else start_time
         manifest = self._build_manifest(raw_config, resolved_config, start_time)
+        self._publish_run_start(manifest, resolved_config, start_time)
 
-        if resolved_config.mode == RunMode.REPLAY:
-            artifacts = self.run_replay(
-                strategy,
-                resolved_config,
-                events=list(events),
-            )
-        elif resolved_config.mode == RunMode.REALTIME_PAPER:
-            artifacts = self.run_realtime_paper(
-                strategy,
-                resolved_config,
-                events=list(events),
-                constraints_provider=constraints_provider,
-                limits_provider=limits_provider,
-                snapshot_provider=snapshot_provider,
-                paper_exchange=paper_exchange,
-            )
-        else:
-            artifacts = self.run_research(
-                strategy,
-                resolved_config,
-                events=list(events),
-            )
+        try:
+            if resolved_config.mode == RunMode.REPLAY:
+                artifacts = self.run_replay(
+                    strategy,
+                    resolved_config,
+                    events=list(events),
+                )
+            elif resolved_config.mode == RunMode.REALTIME_PAPER:
+                realtime_kwargs: dict[str, Any] = {
+                    "events": list(events),
+                    "constraints_provider": constraints_provider,
+                    "limits_provider": limits_provider,
+                    "snapshot_provider": snapshot_provider,
+                    "paper_exchange": paper_exchange,
+                }
+                if _supports_keyword(self.run_realtime_paper, "run_id"):
+                    realtime_kwargs["run_id"] = manifest.run_id
+                artifacts = self.run_realtime_paper(
+                    strategy,
+                    resolved_config,
+                    **realtime_kwargs,
+                )
+            else:
+                artifacts = self.run_research(
+                    strategy,
+                    resolved_config,
+                    events=list(events),
+                )
+        except Exception as exc:
+            self._publish_run_failure(manifest.run_id, str(exc), end_time)
+            raise
 
         metrics_summary = self.metrics_service.compute_summary(
             order_intents=artifacts["order_intents"],
@@ -165,6 +185,7 @@ class StrategyCliService:
         final_manifest = manifest.model_copy(
             update={"end_time": end_time, "metrics_summary": metrics_summary}
         )
+        self._publish_run_finish(final_manifest.run_id, metrics_summary, end_time)
 
         writer = RunArtifactBundleWriter(self.artifact_root)
         written_manifest = writer.write_bundle(
@@ -234,6 +255,7 @@ class StrategyCliService:
         resolved_config: ResolvedRunConfig,
         *,
         events: list[StrategyEvent],
+        run_id: str | None = None,
         constraints_provider: ConstraintsProvider | None = None,
         limits_provider: LimitsProvider | None = None,
         snapshot_provider: SnapshotProvider | None = None,
@@ -252,6 +274,9 @@ class StrategyCliService:
             or (lambda signal: self._limits_from_runtime(signal, runtime, resolved_config)),
             snapshot_provider=snapshot_provider
             or (lambda signal: self._snapshot_from_runtime(signal, runtime)),
+            runtime_registry=self.runtime_registry,
+            run_id=run_id,
+            strategy_name=str(resolved_config.strategy["name"]),
         )
 
         all_signals: list[StrategySignal] = []
@@ -358,6 +383,44 @@ class StrategyCliService:
         )
         return runtime
 
+    def _publish_run_start(
+        self,
+        manifest: RunManifest,
+        resolved_config: ResolvedRunConfig,
+        start_time: datetime,
+    ) -> None:
+        if self.runtime_registry is None:
+            return
+        self.runtime_registry.set_global_mode(_global_mode_for_run(resolved_config.mode))
+        self.runtime_registry.start_run(
+            run_id=manifest.run_id,
+            strategy_name=manifest.strategy_name,
+            strategy_version=manifest.strategy_version,
+            local_mode=_local_mode_for_run(resolved_config.mode),
+            state=StrategyRuntimeState.STARTING,
+            new_order_status=NewOrderBlockState.ALLOWED,
+            heartbeat_at=start_time,
+        )
+
+    def _publish_run_finish(
+        self, run_id: str, metrics_summary: dict[str, Any], end_time: datetime
+    ) -> None:
+        if self.runtime_registry is None:
+            return
+        self.runtime_registry.finish_run(
+            run_id,
+            at=end_time,
+            latest_pnl=float(metrics_summary.get("realized_pnl", 0)),
+            latest_drawdown=float(metrics_summary.get("max_drawdown", 0)),
+        )
+
+    def _publish_run_failure(
+        self, run_id: str, message: str, end_time: datetime
+    ) -> None:
+        if self.runtime_registry is None:
+            return
+        self.runtime_registry.fail_run(run_id, message, at=end_time)
+
     def _constraints_from_runtime(
         self, signal: StrategySignal, runtime: StrategyRuntime
     ) -> MarketConstraints:
@@ -460,6 +523,14 @@ def _mapping(value: object) -> dict[str, Any]:
     return {}
 
 
+def _supports_keyword(callable_obj: Callable[..., Any], name: str) -> bool:
+    signature = inspect.signature(callable_obj)
+    for parameter in signature.parameters.values():
+        if parameter.kind == inspect.Parameter.VAR_KEYWORD:
+            return True
+    return name in signature.parameters
+
+
 def _parse_step_interval(value: str | None) -> timedelta:
     if not value:
         return timedelta(minutes=1)
@@ -543,3 +614,17 @@ def _parse_datetime(value: Any) -> datetime | None:
     if isinstance(value, str) and value:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     return None
+
+
+def _global_mode_for_run(mode: RunMode) -> GlobalMode:
+    if mode == RunMode.REALTIME_PAPER:
+        return GlobalMode.PAPER
+    return GlobalMode.REPLAY
+
+
+def _local_mode_for_run(mode: RunMode) -> LocalRunMode:
+    if mode == RunMode.RESEARCH:
+        return LocalRunMode.RESEARCH
+    if mode == RunMode.REALTIME_PAPER:
+        return LocalRunMode.REALTIME_PAPER
+    return LocalRunMode.REPLAY

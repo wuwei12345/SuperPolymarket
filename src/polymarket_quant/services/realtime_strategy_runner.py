@@ -6,8 +6,14 @@ from typing import Callable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from polymarket_quant.domain.operator import (
+    LocalRunMode,
+    NewOrderBlockState,
+    StrategyRuntimeState,
+)
 from polymarket_quant.domain.simulation import OrderIntent, OrderStatus
 from polymarket_quant.domain.strategy import StrategyEvent, StrategyEventType, StrategySignal
+from polymarket_quant.services.operator_runtime_registry import OperatorRuntimeRegistry
 from polymarket_quant.services.order_risk import MarketConstraints, RiskLimits
 from polymarket_quant.services.paper_exchange import PaperExchangeService, PaperOrderResult
 from polymarket_quant.services.signal_execution import SignalExecutionService
@@ -36,6 +42,9 @@ class RealtimeStrategyRunner:
         constraints_provider: ConstraintsProvider,
         limits_provider: LimitsProvider,
         snapshot_provider: SnapshotProvider | None = None,
+        runtime_registry: OperatorRuntimeRegistry | None = None,
+        run_id: str | None = None,
+        strategy_name: str | None = None,
     ) -> None:
         self.runtime = runtime
         self.signal_execution = signal_execution
@@ -43,24 +52,40 @@ class RealtimeStrategyRunner:
         self.constraints_provider = constraints_provider
         self.limits_provider = limits_provider
         self.snapshot_provider = snapshot_provider or (lambda _signal: None)
+        self.runtime_registry = runtime_registry
+        self.run_id = run_id
+        self.strategy_name = strategy_name or str(
+            self.runtime.run_config.strategy.get("name", "strategy")
+        )
         self._positions = self._restore_positions()
         self._cash = self._restore_cash()
         self._orders: dict[str, dict[str, object]] = {}
 
     def on_init(self, timestamp: datetime) -> RealtimeExecutionResult:
+        self._publish_runtime_state(timestamp, StrategyRuntimeState.STARTING)
         signals = self.runtime.on_init(timestamp)
-        return self._dispatch_signals(signals)
+        result = self._dispatch_signals(signals)
+        self._publish_runtime_state(timestamp, StrategyRuntimeState.RUNNING)
+        return result
 
     def on_event(self, event: StrategyEvent) -> RealtimeExecutionResult:
+        self._publish_runtime_state(event.ts, StrategyRuntimeState.RUNNING)
         signals = self.runtime.on_event(event)
-        return self._dispatch_signals(signals)
+        result = self._dispatch_signals(signals)
+        self._publish_runtime_state(event.ts, StrategyRuntimeState.RUNNING)
+        return result
 
     def on_clock(self, timestamp: datetime) -> RealtimeExecutionResult:
+        self._publish_runtime_state(timestamp, StrategyRuntimeState.RUNNING)
         signals = self.runtime.on_clock(timestamp)
-        return self._dispatch_signals(signals)
+        result = self._dispatch_signals(signals)
+        self._publish_runtime_state(timestamp, StrategyRuntimeState.RUNNING)
+        return result
 
     def on_finish(self, timestamp: datetime) -> list[StrategySignal]:
-        return self.runtime.on_finish(timestamp)
+        signals = self.runtime.on_finish(timestamp)
+        self._publish_runtime_state(timestamp, StrategyRuntimeState.FINISHED)
+        return signals
 
     def _dispatch_signals(
         self, signals: list[StrategySignal]
@@ -85,6 +110,20 @@ class RealtimeStrategyRunner:
             signals=signals,
             order_intents=order_intents,
             paper_results=paper_results,
+        )
+
+    def _publish_runtime_state(
+        self, timestamp: datetime, state: StrategyRuntimeState
+    ) -> None:
+        if self.runtime_registry is None or self.run_id is None:
+            return
+        self.runtime_registry.heartbeat(
+            self.run_id,
+            at=timestamp,
+            state=state,
+            new_order_status=NewOrderBlockState.ALLOWED,
+            active_positions=sum(1 for quantity in self._positions.values() if quantity != 0),
+            open_orders=len(self._orders),
         )
 
     def _record_feedback(
