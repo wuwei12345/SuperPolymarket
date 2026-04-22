@@ -50,3 +50,43 @@ MARKET_DATA_COLUMNS = [
 ]
 MARKET_DATA_REQUIRED_SECTIONS = ["latest table", "price curve", "timeline log"]
 MARKET_DATA_FORBIDDEN_COPY = ["Trade", "Order", "Wallet", "PnL", "Position"]
+
+OPERATOR_CONSOLE_PAGE_TITLE = "Operator Console"
+OPERATOR_CONSOLE_STATUS_FIELDS = [
+    "Run Mode",
+    "Connection Status",
+    "Strategy Status",
+    "New Order Status",
+    "High Priority Alerts",
+    "last heartbeat",
+]
+OPERATOR_CONSOLE_FILTERS = [
+    "strategy",
+    "market/event",
+    "token",
+    "time window",
+    "mode",
+    "severity",
+    "status",
+]
+OPERATOR_CONSOLE_OVERVIEW_COLUMNS = [
+    "strategy name",
+    "mode",
+    "state",
+    "active positions",
+    "open orders",
+    "latest pnl",
+    "latest drawdown",
+    "alerts",
+    "new order status",
+    "last heartbeat",
+]
+OPERATOR_CONSOLE_DETAIL_PANES = ["Positions / Orders", "PnL / Exposure"]
+OPERATOR_CONSOLE_SEVERITIES = ["Critical", "Warning", "Info"]
+OPERATOR_CONSOLE_LAYOUT = {
+    "status_band": "top-fixed",
+    "filters": "left",
+    "overview": "main-upper",
+    "details": "main-lower",
+    "timeline": "bottom",
+}
