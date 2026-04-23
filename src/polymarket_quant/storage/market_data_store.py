@@ -25,7 +25,7 @@ class MarketDataStore:
     def init_schema(self) -> None:
         schema_sql = Path(__file__).with_name("postgres_schema.sql").read_text()
         with self._connect() as connection:
-            connection.execute(schema_sql)
+            self._execute_on_connection(connection, schema_sql)
             self._commit(connection)
 
     def upsert_reference_tokens(self, tokens: Sequence[ReferenceToken]) -> int:
@@ -130,7 +130,7 @@ class MarketDataStore:
             RETURNING id
         """
         with self._connect() as connection:
-            result = connection.execute(sql, row)
+            result = self._execute_on_connection(connection, sql, row)
             snapshot_id = self._scalar(result) or 0
             level_rows = [
                 {
@@ -145,7 +145,8 @@ class MarketDataStore:
                 for index, level in enumerate([*snapshot.bids, *snapshot.asks])
             ]
             if level_rows:
-                connection.executemany(
+                self._executemany_on_connection(
+                    connection,
                     """
                     INSERT INTO normalized.book_levels (
                         snapshot_id, token_id, side, price, size, level_index, gap_fill
@@ -260,19 +261,54 @@ class MarketDataStore:
 
     def _execute(self, sql: str, params: dict[str, Any]) -> None:
         with self._connect() as connection:
-            connection.execute(sql, self._adapt_params(params))
+            self._execute_on_connection(connection, sql, self._adapt_params(params))
             self._commit(connection)
 
     def _executemany(self, sql: str, rows: Sequence[dict[str, Any]]) -> None:
         with self._connect() as connection:
-            connection.executemany(sql, [self._adapt_params(row) for row in rows])
+            self._executemany_on_connection(
+                connection, sql, [self._adapt_params(row) for row in rows]
+            )
             self._commit(connection)
 
     def _fetch_all(self, sql: str, params: dict[str, Any]) -> list[dict[str, Any]]:
         with self._connect() as connection:
-            result = connection.execute(sql, params)
+            result = self._execute_on_connection(connection, sql, params)
             rows = result.fetchall()
         return [dict(row) for row in rows]
+
+    @staticmethod
+    def _execute_on_connection(
+        connection: Any,
+        sql: str,
+        params: dict[str, Any] | None = None,
+    ) -> Any:
+        execute = getattr(connection, "execute", None)
+        if callable(execute):
+            return execute(sql, params)
+        cursor_factory = getattr(connection, "cursor", None)
+        if callable(cursor_factory):
+            with cursor_factory() as cursor:
+                cursor.execute(sql, params)
+                return cursor
+        raise AttributeError("connection does not support execute")
+
+    @staticmethod
+    def _executemany_on_connection(
+        connection: Any,
+        sql: str,
+        rows: Sequence[dict[str, Any]],
+    ) -> None:
+        executemany = getattr(connection, "executemany", None)
+        if callable(executemany):
+            executemany(sql, list(rows))
+            return
+        cursor_factory = getattr(connection, "cursor", None)
+        if callable(cursor_factory):
+            with cursor_factory() as cursor:
+                cursor.executemany(sql, rows)
+            return
+        raise AttributeError("connection does not support executemany")
 
     @staticmethod
     def _commit(connection: Any) -> None:

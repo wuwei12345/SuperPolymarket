@@ -1,0 +1,20 @@
+environment: local
+mode: realtime_paper
+artifact_root: data/runs
+automation_root: data/automation
+report_output_dir: data/reports/daily
+market_store_path: data/markets.sqlite3
+enabled_tasks:
+  - market_sync
+  - realtime_health_check
+  - strategy_batch
+  - report_generation
+report_formats:
+  - markdown
+  - html
+window_policy: calendar_yesterday
+timezone: UTC
+strategies:
+  - name: scheduled_bootstrap_stress
+    strategy_class: polymarket_quant.strategy.scheduled:ScheduledBootstrapStressStrategy
+    config_path: strategy.daily.yaml

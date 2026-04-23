@@ -20,9 +20,9 @@
 
 ### Strategy Framework
 
-- [ ] **STRAT-01**: 用户可以基于市场元数据、价格序列和盘口特征编写策略逻辑
-- [ ] **STRAT-02**: 用户可以在同一框架下运行历史回放回测与实时 paper 模式
-- [ ] **STRAT-03**: 用户可以为策略配置 market universe、信号参数、仓位 sizing 和开平仓规则
+- [x] **STRAT-01**: 用户可以基于市场元数据、价格序列和盘口特征编写策略逻辑
+- [x] **STRAT-02**: 用户可以在同一框架下运行历史回放回测与实时 paper 模式
+- [x] **STRAT-03**: 用户可以为策略配置 market universe、信号参数、仓位 sizing 和开平仓规则
 
 ### Simulation Execution
 
@@ -33,14 +33,20 @@
 ### Risk & Portfolio
 
 - [x] **RISK-01**: 用户可以配置单市场、单事件和组合级别的风险限额与最大敞口
-- [ ] **RISK-02**: 用户可以在市场关闭、不再接单、接近到期、流动性不足或 live 不可用时自动阻止新订单
-- [ ] **RISK-03**: 用户可以查看按市场、事件、策略和时间窗口聚合的收益、胜率、回撤和换手指标
+- [x] **RISK-02**: 用户可以在市场关闭、不再接单、接近到期、流动性不足或 live 不可用时自动阻止新订单
+- [x] **RISK-03**: 用户可以查看按市场、事件、策略和时间窗口聚合的收益、胜率、回撤和换手指标
 
 ### Operations
 
-- [ ] **OPS-01**: 用户可以在一个操作台看到数据连接状态、策略状态、订单、持仓、PnL 和告警
-- [ ] **OPS-02**: 用户可以保存实验参数、数据窗口、指标结果和代码版本，以便复现实验
-- [ ] **OPS-03**: 用户可以在不修改策略代码的情况下切换 replay、paper 和 live-disabled 运行模式
+- [x] **OPS-01**: 用户可以在一个操作台看到数据连接状态、策略状态、订单、持仓、PnL 和告警
+- [x] **OPS-02**: 用户可以保存实验参数、数据窗口、指标结果和代码版本，以便复现实验
+- [x] **OPS-03**: 用户可以在不修改策略代码的情况下切换 replay、paper 和 live-disabled 运行模式
+
+### Automation & Reporting
+
+- [x] **AUTO-01**: 用户可以按固定计划自动执行市场同步、实时健康检查、策略批量运行和报告生成
+- [x] **AUTO-02**: 用户可以获得按日输出的结构化报告，包含市场、数据、策略、风险和告警摘要
+- [x] **AUTO-03**: 用户可以追踪每次自动化运行的配置、步骤结果、错误和产物路径
 
 ## v2 Requirements
 
@@ -80,20 +86,23 @@
 | SIM-02 | Phase 3 | Complete |
 | SIM-03 | Phase 3 | Complete |
 | RISK-01 | Phase 3 | Complete |
-| STRAT-01 | Phase 4 | Pending |
-| STRAT-02 | Phase 4 | Pending |
-| STRAT-03 | Phase 4 | Pending |
-| OPS-02 | Phase 4 | Pending |
-| RISK-02 | Phase 5 | Pending |
-| RISK-03 | Phase 5 | Pending |
-| OPS-01 | Phase 5 | Pending |
-| OPS-03 | Phase 5 | Pending |
+| STRAT-01 | Phase 4 | Complete |
+| STRAT-02 | Phase 4 | Complete |
+| STRAT-03 | Phase 4 | Complete |
+| OPS-02 | Phase 4 | Complete |
+| RISK-02 | Phase 5 | Complete |
+| RISK-03 | Phase 5 | Complete |
+| OPS-01 | Phase 5 | Complete |
+| OPS-03 | Phase 5 | Complete |
+| AUTO-01 | Phase 6 | Complete |
+| AUTO-02 | Phase 6 | Complete |
+| AUTO-03 | Phase 6 | Complete |
 
 **Coverage:**
-- v1 requirements: 19 total
-- Mapped to phases: 19
+- v1 requirements: 22 total
+- Mapped to phases: 22
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-18*
-*Last updated: 2026-04-19 after Phase 3 verification*
+*Last updated: 2026-04-22 after Phase 6 execution*

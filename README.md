@@ -2,6 +2,10 @@
 
 Simulation-first Polymarket research system for building a canonical market universe, market data substrate, replay workflows, and paper execution.
 
+中文新手文档：
+
+- [docs/新手使用说明与测试用例.md](docs/新手使用说明与测试用例.md)
+
 ## Phase 1 Market Universe UI
 
 Run the Phase 1 browser page:
@@ -9,6 +13,8 @@ Run the Phase 1 browser page:
 ```bash
 streamlit run src/polymarket_quant/ui/market_universe_app.py
 ```
+
+Each Streamlit page now includes a `Language / 语言` selector in the sidebar for English and Chinese UI copy.
 
 Phase 1 defaults to `active + accepting orders` markets. The page uses left filters, a right-side table, and a bottom collapsible timeline so the sync process and market rows can be checked together.
 
@@ -164,3 +170,39 @@ The first screen is a single-page operator surface:
 Mode changes are guarded. The console requires a `preflight` step first, shows blocking and warning reasons, and only applies the switch after explicit `confirm` input.
 
 `live-disabled` remains a protective boundary in v1. It is not a live-trading mode, and Phase 5 does not enable wallet auth or real order submission.
+
+## Phase 6 Automation + Scheduled Reports
+
+Phase 6 adds a one-shot automation workflow for the default daily operator loop:
+
+- market sync
+- realtime health check
+- strategy batch run
+- report generation
+
+Primary config:
+
+- [config/automation.daily.yaml](/Users/wuwei/Documents/polymarketQuantification/config/automation.daily.yaml)
+- [config/strategy.daily.yaml](/Users/wuwei/Documents/polymarketQuantification/config/strategy.daily.yaml)
+
+Run it manually:
+
+```bash
+python -m polymarket_quant.services.automation_cli config/automation.daily.yaml
+```
+
+The automation run writes:
+
+- strategy artifacts under `data/runs`
+- automation manifests under `data/automation`
+- daily Markdown and HTML reports under `data/reports/daily`
+
+The default report window is `昨日自然日`. Markdown is the canonical report output; HTML is generated from the same content.
+
+Example `cron` entry:
+
+```cron
+15 8 * * * cd /Users/wuwei/Documents/polymarketQuantification && python -m polymarket_quant.services.automation_cli config/automation.daily.yaml >> data/automation/cron.log 2>&1
+```
+
+This keeps scheduling outside the application. Phase 6 still runs strategies in `realtime_paper` mode only.

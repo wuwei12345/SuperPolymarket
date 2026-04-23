@@ -84,5 +84,15 @@ class RunArtifactBundleWriter:
 
 def _row_to_dict(row: Mapping[str, Any] | BaseModel) -> dict[str, Any]:
     if isinstance(row, BaseModel):
-        return row.model_dump(mode="json")
-    return dict(row)
+        return _sanitize_nested(row.model_dump(mode="json"))
+    return _sanitize_nested(dict(row))
+
+
+def _sanitize_nested(value: Any) -> Any:
+    if isinstance(value, dict):
+        if not value:
+            return None
+        return {key: _sanitize_nested(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_nested(child) for child in value]
+    return value

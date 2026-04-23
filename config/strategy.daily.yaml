@@ -1,0 +1,21 @@
+run_id: strategy-daily-001
+environment: local
+mode: realtime_paper
+strategy:
+  name: scheduled_bootstrap_stress
+  version: "0.1.0"
+  stress_profile: medium
+  stress_max_active_tokens: 10
+  stress_stage_interval_seconds: 20
+  stress_event_trigger_count: 2
+universe:
+  dataset_id: automation-market-store
+  token_ids: []
+  token_mappings: []
+risk:
+  cash_available: "1000"
+  max_single_order_notional: "100"
+  max_market_position: "500"
+  max_token_position: "500"
+execution:
+  time_in_force: GTC

@@ -132,27 +132,18 @@ class OperatorQueryService:
 
     def pnl_exposure(self, filters: OperatorFilters | None = None) -> list[dict[str, Any]]:
         filters = filters or OperatorFilters()
-        rows: list[dict[str, Any]] = []
-        for manifest in self._selected_manifests(filters):
-            metrics = manifest.metrics_summary
-            rows.append(
-                {
-                    **self._manifest_context(manifest),
-                    "realized_pnl": _as_decimal(metrics.get("realized_pnl")),
-                    "unrealized_pnl": _as_decimal(metrics.get("unrealized_pnl")),
-                    "turnover": _as_decimal(metrics.get("turnover")),
-                    "max_drawdown": _as_decimal(metrics.get("max_drawdown")),
-                    "exposure_peak": _as_decimal(metrics.get("exposure_peak")),
-                    "win_rate": Decimal("1")
-                    if _as_decimal(metrics.get("realized_pnl"))
-                    + _as_decimal(metrics.get("unrealized_pnl"))
-                    > 0
-                    else Decimal("0"),
-                }
-            )
+        rows = [self._pnl_row(manifest) for manifest in self._selected_manifests(filters)]
         if not rows and self.simulation_store is not None:
             rows.extend(self.simulation_store.fetch_pnl())
         return rows
+
+    def pnl_exposure_for_run_ids(self, run_ids: list[str]) -> list[dict[str, Any]]:
+        run_id_set = set(run_ids)
+        return [
+            self._pnl_row(manifest)
+            for manifest in self._load_manifests()
+            if manifest.run_id in run_id_set
+        ]
 
     def alerts_timeline(
         self, filters: OperatorFilters | None = None
@@ -218,6 +209,47 @@ class OperatorQueryService:
             reverse=True,
         )
 
+    def alerts_timeline_for_run_ids(self, run_ids: list[str]) -> list[dict[str, Any]]:
+        run_id_set = set(run_ids)
+        timeline: list[dict[str, Any]] = []
+        snapshots = self._runtime_snapshots()
+        for manifest in self._load_manifests():
+            if manifest.run_id not in run_id_set:
+                continue
+            snapshot = snapshots.get(manifest.run_id)
+            if snapshot is not None:
+                timeline.append(
+                    {
+                        "ts": snapshot.last_heartbeat,
+                        "severity": _severity_for_snapshot(snapshot),
+                        "strategy": manifest.strategy_name,
+                        "run_id": manifest.run_id,
+                        "message": (
+                            f"state={snapshot.state.value} "
+                            f"new_order_status={snapshot.new_order_status.value} "
+                            f"last_heartbeat={snapshot.last_heartbeat.isoformat()}"
+                        ),
+                    }
+                )
+            for decision in self._load_artifact_rows(manifest, "risk_decisions"):
+                timeline.append(
+                    {
+                        "ts": _parse_timestamp(decision.get("created_at")),
+                        "severity": _severity_for_risk_decision(decision),
+                        "strategy": manifest.strategy_name,
+                        "run_id": manifest.run_id,
+                        "message": (
+                            f"risk decision={decision.get('decision')} "
+                            f"warnings={decision.get('warnings', [])}"
+                        ),
+                    }
+                )
+        return sorted(
+            timeline,
+            key=lambda row: row["ts"] or datetime.min,
+            reverse=True,
+        )
+
     def runs_artifacts(
         self, filters: OperatorFilters | None = None
     ) -> list[dict[str, Any]]:
@@ -232,6 +264,18 @@ class OperatorQueryService:
                 }
             )
         return rows
+
+    def runs_artifacts_for_run_ids(self, run_ids: list[str]) -> list[dict[str, Any]]:
+        run_id_set = set(run_ids)
+        return [
+            {
+                **self._manifest_context(manifest),
+                "artifact_files": manifest.artifact_files,
+                "run_directory": str(self.artifact_root / manifest.run_id),
+            }
+            for manifest in self._load_manifests()
+            if manifest.run_id in run_id_set
+        ]
 
     def _run_contexts(self, filters: OperatorFilters) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
@@ -431,6 +475,22 @@ class OperatorQueryService:
         if self.market_data_store is None:
             return []
         return self.market_data_store.fetch_latest_state(limit=200)
+
+    def _pnl_row(self, manifest: RunManifest) -> dict[str, Any]:
+        metrics = manifest.metrics_summary
+        return {
+            **self._manifest_context(manifest),
+            "realized_pnl": _as_decimal(metrics.get("realized_pnl")),
+            "unrealized_pnl": _as_decimal(metrics.get("unrealized_pnl")),
+            "turnover": _as_decimal(metrics.get("turnover")),
+            "max_drawdown": _as_decimal(metrics.get("max_drawdown")),
+            "exposure_peak": _as_decimal(metrics.get("exposure_peak")),
+            "win_rate": Decimal("1")
+            if _as_decimal(metrics.get("realized_pnl"))
+            + _as_decimal(metrics.get("unrealized_pnl"))
+            > 0
+            else Decimal("0"),
+        }
 
 
 def _matches_manifest_filters(

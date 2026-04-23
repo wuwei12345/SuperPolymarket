@@ -26,6 +26,7 @@ from polymarket_quant.ui.contracts import (
     OPERATOR_CONSOLE_SEVERITIES,
     OPERATOR_CONSOLE_STATUS_FIELDS,
 )
+from polymarket_quant.ui.i18n import render_language_selector, t
 
 
 DEFAULT_ARTIFACT_ROOT = Path(
@@ -33,43 +34,73 @@ DEFAULT_ARTIFACT_ROOT = Path(
 )
 
 
-def build_overview_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
+def build_overview_dataframe(rows: list[dict[str, Any]], language: str = "en") -> pd.DataFrame:
     frame = pd.DataFrame(rows)
+    if not frame.empty:
+        frame = frame.copy()
+        if "mode" in frame:
+            frame["mode"] = frame["mode"].map(lambda value: _localize_mode(str(value), language=language))
+        if "state" in frame:
+            frame["state"] = frame["state"].map(lambda value: _localize_state(str(value), language=language))
+        if "new_order_status" in frame:
+            frame["new_order_status"] = frame["new_order_status"].map(
+                lambda value: _localize_new_order_status(str(value), language=language)
+            )
     return frame.rename(
         columns={
-            "strategy_name": "strategy name",
-            "active_positions": "active positions",
-            "open_orders": "open orders",
-            "latest_pnl": "latest pnl",
-            "latest_drawdown": "latest drawdown",
-            "new_order_status": "new order status",
-            "last_heartbeat": "last heartbeat",
+            "strategy_name": t(language, "operator.col_strategy_name"),
+            "mode": t(language, "operator.col_mode"),
+            "state": t(language, "operator.col_state"),
+            "active_positions": t(language, "operator.col_active_positions"),
+            "open_orders": t(language, "operator.col_open_orders"),
+            "latest_pnl": t(language, "operator.col_latest_pnl"),
+            "latest_drawdown": t(language, "operator.col_latest_drawdown"),
+            "alerts": t(language, "operator.col_alerts"),
+            "new_order_status": t(language, "operator.col_new_order_status"),
+            "last_heartbeat": t(language, "operator.col_last_heartbeat"),
         }
-    ).reindex(columns=OPERATOR_CONSOLE_OVERVIEW_COLUMNS)
+    ).reindex(
+        columns=[
+            t(language, "operator.col_strategy_name"),
+            t(language, "operator.col_mode"),
+            t(language, "operator.col_state"),
+            t(language, "operator.col_active_positions"),
+            t(language, "operator.col_open_orders"),
+            t(language, "operator.col_latest_pnl"),
+            t(language, "operator.col_latest_drawdown"),
+            t(language, "operator.col_alerts"),
+            t(language, "operator.col_new_order_status"),
+            t(language, "operator.col_last_heartbeat"),
+        ]
+    )
 
 
-def build_positions_orders_dataframe(rows: list[dict[str, Any]], *, pane: str) -> pd.DataFrame:
+def build_positions_orders_dataframe(
+    rows: list[dict[str, Any]], *, pane: str, language: str = "en"
+) -> pd.DataFrame:
     frame = pd.DataFrame(rows)
     if pane == "Positions":
         columns = [
-            "strategy_name",
-            "token_id",
-            "quantity",
-            "mark_price",
-            "run_id",
+            ("strategy_name", t(language, "operator.col_strategy_name")),
+            ("token_id", t(language, "operator.col_token_id")),
+            ("quantity", t(language, "operator.col_quantity")),
+            ("mark_price", t(language, "operator.col_mark_price")),
+            ("run_id", t(language, "operator.col_run_id")),
         ]
     else:
         columns = [
-            "strategy_name",
-            "client_order_id",
-            "token_id",
-            "status",
-            "run_id",
+            ("strategy_name", t(language, "operator.col_strategy_name")),
+            ("client_order_id", t(language, "operator.col_client_order_id")),
+            ("token_id", t(language, "operator.col_token_id")),
+            ("status", t(language, "operator.col_status")),
+            ("run_id", t(language, "operator.col_run_id")),
         ]
-    return frame.reindex(columns=columns)
+    return frame.reindex(columns=[source for source, _label in columns]).rename(
+        columns={source: label for source, label in columns}
+    )
 
 
-def build_pnl_exposure_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
+def build_pnl_exposure_dataframe(rows: list[dict[str, Any]], language: str = "en") -> pd.DataFrame:
     return pd.DataFrame(rows).reindex(
         columns=[
             "strategy_name",
@@ -81,22 +112,42 @@ def build_pnl_exposure_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
             "win_rate",
             "run_id",
         ]
+    ).rename(
+        columns={
+            "strategy_name": t(language, "operator.col_strategy_name"),
+            "realized_pnl": t(language, "operator.col_realized_pnl"),
+            "unrealized_pnl": t(language, "operator.col_unrealized_pnl"),
+            "turnover": t(language, "operator.col_turnover"),
+            "max_drawdown": t(language, "operator.col_max_drawdown"),
+            "exposure_peak": t(language, "operator.col_exposure_peak"),
+            "win_rate": t(language, "operator.col_win_rate"),
+            "run_id": t(language, "operator.col_run_id"),
+        }
     )
 
 
-def build_timeline_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
-    return pd.DataFrame(rows).reindex(columns=["ts", "severity", "strategy", "message"])
+def build_timeline_dataframe(rows: list[dict[str, Any]], language: str = "en") -> pd.DataFrame:
+    return pd.DataFrame(rows).reindex(columns=["ts", "severity", "strategy", "message"]).rename(
+        columns={
+            "ts": t(language, "operator.col_ts"),
+            "severity": t(language, "operator.col_severity"),
+            "strategy": t(language, "operator.col_strategy"),
+            "message": t(language, "operator.col_message"),
+        }
+    )
 
 
 def main(query_service: OperatorQueryService | None = None) -> None:
     if st is None:
         raise RuntimeError("streamlit is required to run the operator console")
 
-    st.set_page_config(page_title=OPERATOR_CONSOLE_PAGE_TITLE, layout="wide")
+    language = st.session_state.get("operator_console_language", "en") if st is not None else "en"
+    st.set_page_config(page_title=t(language, "operator.page_title"), layout="wide")
     _inject_style()
-    st.title(OPERATOR_CONSOLE_PAGE_TITLE)
-    st.caption("global mode, connection status, strategy state, alert summary, new-order block")
-    st.caption("Severity ladder: Critical / Warning / Info")
+    language = render_language_selector("operator_console_language")
+    st.title(t(language, "operator.page_title"))
+    st.caption(t(language, "operator.caption"))
+    st.caption(t(language, "operator.severity_ladder"))
 
     query_service = query_service or OperatorQueryService(DEFAULT_ARTIFACT_ROOT)
     filters = render_shared_filters()
@@ -106,47 +157,76 @@ def main(query_service: OperatorQueryService | None = None) -> None:
     pnl_rows = query_service.pnl_exposure(filters)
     timeline_rows = query_service.alerts_timeline(filters)
 
-    render_status_band(status_band)
-    st.subheader("Strategy Overview")
+    render_status_band(status_band, language=language)
+    st.subheader(t(language, "operator.overview"))
     st.dataframe(
-        build_overview_dataframe(overview_rows),
+        build_overview_dataframe(overview_rows, language=language),
         use_container_width=True,
         hide_index=True,
     )
 
     left, right = st.columns(2)
     with left:
-        render_positions_orders_block(positions_orders)
+        render_positions_orders_block(positions_orders, language=language)
     with right:
-        render_pnl_exposure_block(pnl_rows)
+        render_pnl_exposure_block(pnl_rows, language=language)
 
-    render_mode_switch(query_service, filters)
-    st.subheader("Alerts Timeline")
-    st.caption("read-only event flow with shared filters")
+    render_mode_switch(query_service, filters, language=language)
+    st.subheader(t(language, "operator.timeline"))
+    st.caption(t(language, "operator.timeline_caption"))
     st.dataframe(
-        build_timeline_dataframe(timeline_rows),
+        build_timeline_dataframe(timeline_rows, language=language),
         use_container_width=True,
         hide_index=True,
     )
-    render_runs_artifacts_surface(query_service, filters)
+    render_runs_artifacts_surface(query_service, filters, language=language)
 
 
 def render_shared_filters() -> OperatorFilters:
     if st is None:
         return OperatorFilters()
 
-    st.sidebar.header("Filters")
-    st.sidebar.caption(", ".join(OPERATOR_CONSOLE_FILTERS))
-    strategy = st.sidebar.text_input("strategy")
-    market = st.sidebar.text_input("market/event")
-    token = st.sidebar.text_input("token")
-    mode = st.sidebar.selectbox("mode", ["", "replay", "paper", "live-disabled"])
-    severity = st.sidebar.selectbox("severity", ["", *OPERATOR_CONSOLE_SEVERITIES])
-    status = st.sidebar.selectbox(
-        "status",
-        ["", "running", "blocked", "warning", "paused", "error", "finished"],
+    language = st.session_state.get("operator_console_language", "en")
+    st.sidebar.header(t(language, "operator.filters"))
+    st.sidebar.caption(
+        ", ".join(
+            [
+                t(language, "operator.filter_strategy"),
+                t(language, "operator.filter_market_event"),
+                t(language, "operator.filter_token"),
+                t(language, "operator.filter_time_window"),
+                t(language, "operator.filter_mode"),
+                t(language, "operator.filter_severity"),
+                t(language, "operator.filter_status"),
+            ]
+        )
     )
-    time_window = st.sidebar.date_input("time window", value=())
+    strategy = st.sidebar.text_input(t(language, "operator.filter_strategy"))
+    market = st.sidebar.text_input(t(language, "operator.filter_market_event"))
+    token = st.sidebar.text_input(t(language, "operator.filter_token"))
+    mode = st.sidebar.selectbox(
+        t(language, "operator.filter_mode"),
+        [
+            "",
+            t(language, "operator.mode_replay"),
+            t(language, "operator.mode_paper"),
+            t(language, "operator.mode_live_disabled"),
+        ],
+    )
+    severity = st.sidebar.selectbox(t(language, "operator.filter_severity"), ["", *OPERATOR_CONSOLE_SEVERITIES])
+    status = st.sidebar.selectbox(
+        t(language, "operator.filter_status"),
+        [
+            "",
+            t(language, "operator.status_running"),
+            t(language, "operator.status_blocked"),
+            t(language, "operator.status_warning"),
+            t(language, "operator.status_paused"),
+            t(language, "operator.status_error"),
+            t(language, "operator.status_finished"),
+        ],
+    )
+    time_window = st.sidebar.date_input(t(language, "operator.filter_time_window"), value=())
     window_start = None
     window_end = None
     if len(time_window) == 2:
@@ -157,35 +237,43 @@ def render_shared_filters() -> OperatorFilters:
         market=market or None,
         event=market or None,
         token=token or None,
-        mode=_normalize_mode_filter(mode),
+        mode=_normalize_mode_filter(mode, language=language),
         severity=severity or None,
-        status=_normalize_status_filter(status),
+        status=_normalize_status_filter(status, language=language),
         window_start=window_start,
         window_end=window_end,
     )
 
 
-def render_status_band(status_band: dict[str, Any]) -> None:
+def render_status_band(status_band: dict[str, Any], *, language: str = "en") -> None:
     if st is None:
         return
-    st.subheader("Status Band")
+    st.subheader(t(language, "operator.status_band"))
     columns = st.columns(len(OPERATOR_CONSOLE_STATUS_FIELDS))
     connections = status_band.get("connections", [])
-    connection_summary = _render_connections_summary(connections)
+    connection_summary = _render_connections_summary(connections, language=language)
     strategy_summary = status_band.get("strategy_summary", {})
-    strategy_text = ", ".join(
-        f"{name}:{count}" for name, count in strategy_summary.items() if count
-    ) or "none"
 
     values = [
-        str(status_band.get("global_mode", "live-disabled")),
+        _localize_mode(str(status_band.get("global_mode", "live-disabled")), language=language),
         connection_summary,
-        strategy_text,
-        str(status_band.get("new_order_status", "allowed")),
+        _localize_strategy_summary(strategy_summary, language=language) or t(language, "operator.none"),
+        _localize_new_order_status(
+            str(status_band.get("new_order_status", "allowed")),
+            language=language,
+        ),
         str(status_band.get("high_priority_alerts", 0)),
-        _format_timestamp(status_band.get("last_updated")),
+        _format_timestamp(status_band.get("last_updated"), language=language),
     ]
-    for column, label, value in zip(columns, OPERATOR_CONSOLE_STATUS_FIELDS, values):
+    labels = [
+        t(language, "operator.status_run_mode"),
+        t(language, "operator.status_connection"),
+        t(language, "operator.status_strategy"),
+        t(language, "operator.status_new_order"),
+        t(language, "operator.status_high_alerts"),
+        t(language, "operator.status_last_heartbeat"),
+    ]
+    for column, label, value in zip(columns, labels, values):
         with column:
             st.caption(label)
             st.write(value)
@@ -194,67 +282,92 @@ def render_status_band(status_band: dict[str, Any]) -> None:
 def render_mode_switch(
     query_service: OperatorQueryService,
     filters: OperatorFilters,
+    *,
+    language: str = "en",
     safety_service: OperatorSafetyService | None = None,
 ) -> None:
     if st is None:
         return
     safety_service = safety_service or OperatorSafetyService()
-    st.subheader("Mode Switch")
+    st.subheader(t(language, "operator.mode_switch"))
     target_mode_label = st.selectbox(
-        "Target global mode",
-        ["replay", "paper", "live-disabled"],
+        t(language, "operator.target_global_mode"),
+        [
+            t(language, "operator.mode_replay"),
+            t(language, "operator.mode_paper"),
+            t(language, "operator.mode_live_disabled"),
+        ],
         key="target_global_mode",
     )
-    if st.button("Run preflight", key="mode_preflight"):
+    if st.button(t(language, "operator.preflight"), key="mode_preflight"):
         st.session_state["mode_preflight_result"] = build_mode_preflight(
             query_service,
             target_mode=target_mode_label,
             filters=filters,
             safety_service=safety_service,
+            language=language,
         )
 
     preflight: ModePreflightResult | None = st.session_state.get("mode_preflight_result")
     if preflight is None:
-        st.caption("Run preflight before confirm.")
+        st.caption(t(language, "operator.preflight_hint"))
         return
 
-    st.caption(f"preflight target={preflight.target_mode.value}")
+    st.caption(
+        t(language, "operator.preflight_target", target=preflight.target_mode.value)
+    )
     if preflight.blockers:
         st.error("\n".join(preflight.blockers))
     if preflight.warnings:
         st.warning("\n".join(preflight.warnings))
-    confirmed = st.checkbox("I confirm the global mode change", key="mode_switch_confirm")
+    confirmed = st.checkbox(t(language, "operator.confirm_checkbox"), key="mode_switch_confirm")
     if st.button(
-        "confirm mode switch",
+        t(language, "operator.confirm"),
         key="confirm_mode_switch",
         disabled=not preflight.allowed,
     ):
         if confirm_mode_switch(query_service, preflight, confirmed=confirmed):
-            st.success(f"Global mode changed to {preflight.target_mode.value}")
+            st.success(
+                t(language, "operator.confirm_success", target=preflight.target_mode.value)
+            )
         else:
-            st.warning("confirm is required before the mode changes.")
+            st.warning(t(language, "operator.confirm_required"))
 
 
-def render_positions_orders_block(detail_rows: dict[str, list[dict[str, Any]]]) -> None:
+def render_positions_orders_block(
+    detail_rows: dict[str, list[dict[str, Any]]], *, language: str = "en"
+) -> None:
     if st is None:
         return
-    st.subheader(OPERATOR_CONSOLE_DETAIL_PANES[0])
-    pane = st.selectbox("Positions / Orders", ["Positions", "Orders"], key="positions_orders")
-    source_rows = detail_rows["positions"] if pane == "Positions" else detail_rows["orders"]
+    st.subheader(t(language, "operator.detail_positions_orders"))
+    pane = st.selectbox(
+        t(language, "operator.detail_positions_orders"),
+        [t(language, "operator.positions"), t(language, "operator.orders")],
+        key="positions_orders",
+    )
+    source_rows = (
+        detail_rows["positions"]
+        if pane == t(language, "operator.positions")
+        else detail_rows["orders"]
+    )
     st.dataframe(
-        build_positions_orders_dataframe(source_rows, pane=pane),
+        build_positions_orders_dataframe(
+            source_rows,
+            pane="Positions" if pane == t(language, "operator.positions") else "Orders",
+            language=language,
+        ),
         use_container_width=True,
         hide_index=True,
     )
 
 
-def render_pnl_exposure_block(pnl_rows: list[dict[str, Any]]) -> None:
+def render_pnl_exposure_block(pnl_rows: list[dict[str, Any]], *, language: str = "en") -> None:
     if st is None:
         return
-    st.subheader(OPERATOR_CONSOLE_DETAIL_PANES[1])
-    st.caption("PnL / Exposure")
+    st.subheader(t(language, "operator.detail_pnl_exposure"))
+    st.caption(t(language, "operator.detail_pnl_exposure"))
     st.dataframe(
-        build_pnl_exposure_dataframe(pnl_rows),
+        build_pnl_exposure_dataframe(pnl_rows, language=language),
         use_container_width=True,
         hide_index=True,
     )
@@ -263,11 +376,13 @@ def render_pnl_exposure_block(pnl_rows: list[dict[str, Any]]) -> None:
 def render_runs_artifacts_surface(
     query_service: OperatorQueryService,
     filters: OperatorFilters,
+    *,
+    language: str = "en",
 ) -> None:
     if st is None:
         return
-    with st.expander("Runs / Artifacts", expanded=False):
-        st.caption("secondary surface; not a homepage default pane")
+    with st.expander(t(language, "operator.runs_artifacts"), expanded=False):
+        st.caption(t(language, "operator.runs_artifacts_caption"))
         st.dataframe(
             pd.DataFrame(query_service.runs_artifacts(filters)),
             use_container_width=True,
@@ -280,6 +395,7 @@ def build_mode_preflight(
     *,
     target_mode: str,
     filters: OperatorFilters | None = None,
+    language: str = "en",
     safety_service: OperatorSafetyService | None = None,
 ) -> ModePreflightResult:
     filters = filters or OperatorFilters()
@@ -287,7 +403,7 @@ def build_mode_preflight(
     status_band = query_service.status_band(filters)
     return safety_service.preflight(
         current_mode=status_band["global_mode"],
-        target_mode=_global_mode_from_label(target_mode),
+        target_mode=_global_mode_from_label(target_mode, language=language),
         connections=status_band["connections"],
     )
 
@@ -304,40 +420,105 @@ def confirm_mode_switch(
     return True
 
 
-def _render_connections_summary(connections: list[ConnectionState]) -> str:
+def _render_connections_summary(
+    connections: list[ConnectionState], *, language: str = "en"
+) -> str:
     if not connections:
-        return "none"
-    return ", ".join(f"{connection.component.value}:{connection.status.value}" for connection in connections)
+        return t(language, "operator.none")
+    return ", ".join(
+        f"{connection.component.value}:{_localize_connection_status(connection.status.value, language=language)}"
+        for connection in connections
+    )
 
 
-def _normalize_mode_filter(mode: str) -> str | None:
-    if mode == "paper":
+def _normalize_mode_filter(mode: str, *, language: str = "en") -> str | None:
+    if mode == t(language, "operator.mode_paper"):
         return "realtime_paper"
-    if mode in {"replay", "live-disabled"}:
-        return mode
+    if mode == t(language, "operator.mode_replay"):
+        return "replay"
+    if mode == t(language, "operator.mode_live_disabled"):
+        return "live-disabled"
     return None
 
 
-def _normalize_status_filter(status: str) -> str | None:
-    if status == "warning":
+def _normalize_status_filter(status: str, *, language: str = "en") -> str | None:
+    mapping = {
+        t(language, "operator.status_running"): "running",
+        t(language, "operator.status_blocked"): "blocked",
+        t(language, "operator.status_warning"): "blocked",
+        t(language, "operator.status_paused"): "paused",
+        t(language, "operator.status_error"): "error",
+        t(language, "operator.status_finished"): "finished",
+    }
+    normalized = mapping.get(status, status or None)
+    if normalized == "warning":
         return "blocked"
-    return status or None
+    return normalized
 
 
-def _format_timestamp(value: Any) -> str:
+def _format_timestamp(value: Any, *, language: str = "en") -> str:
     if value is None:
-        return "n/a"
+        return t(language, "operator.na")
     if hasattr(value, "isoformat"):
         return value.isoformat()
     return str(value)
 
 
-def _global_mode_from_label(value: str) -> GlobalMode:
-    if value == "paper":
+def _global_mode_from_label(value: str, *, language: str = "en") -> GlobalMode:
+    if value == t(language, "operator.mode_paper"):
         return GlobalMode.PAPER
-    if value == "replay":
+    if value == t(language, "operator.mode_replay"):
         return GlobalMode.REPLAY
     return GlobalMode.LIVE_DISABLED
+
+
+def _localize_mode(value: str, *, language: str = "en") -> str:
+    mapping = {
+        "replay": t(language, "operator.mode_replay"),
+        "realtime_paper": t(language, "operator.mode_paper"),
+        "paper": t(language, "operator.mode_paper"),
+        "live-disabled": t(language, "operator.mode_live_disabled"),
+    }
+    return mapping.get(value, value)
+
+
+def _localize_state(value: str, *, language: str = "en") -> str:
+    mapping = {
+        "running": t(language, "operator.status_running"),
+        "blocked": t(language, "operator.status_blocked"),
+        "paused": t(language, "operator.status_paused"),
+        "error": t(language, "operator.status_error"),
+        "finished": t(language, "operator.status_finished"),
+        "starting": "starting" if language == "en" else "启动中",
+    }
+    return mapping.get(value, value)
+
+
+def _localize_new_order_status(value: str, *, language: str = "en") -> str:
+    mapping = {
+        "allowed": t(language, "operator.new_order_allowed"),
+        "partially blocked": t(language, "operator.new_order_partially_blocked"),
+        "fully blocked": t(language, "operator.new_order_fully_blocked"),
+    }
+    return mapping.get(value, value)
+
+
+def _localize_connection_status(value: str, *, language: str = "en") -> str:
+    mapping = {
+        "healthy": t(language, "operator.connection_healthy"),
+        "degraded": t(language, "operator.connection_degraded"),
+        "down": t(language, "operator.connection_down"),
+    }
+    return mapping.get(value, value)
+
+
+def _localize_strategy_summary(summary: dict[str, int], *, language: str = "en") -> str:
+    localized_parts = []
+    for name, count in summary.items():
+        if not count:
+            continue
+        localized_parts.append(f"{_localize_state(name, language=language)}:{count}")
+    return ", ".join(localized_parts)
 
 
 def _inject_style() -> None:

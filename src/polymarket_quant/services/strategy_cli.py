@@ -133,6 +133,27 @@ class StrategyCliService:
         paper_exchange: PaperExchangeService | None = None,
     ) -> StrategyCliRunResult:
         raw_config = self.load_config(config_path)
+        return self.run_from_config(
+            strategy,
+            raw_config,
+            events=events,
+            constraints_provider=constraints_provider,
+            limits_provider=limits_provider,
+            snapshot_provider=snapshot_provider,
+            paper_exchange=paper_exchange,
+        )
+
+    def run_from_config(
+        self,
+        strategy: BaseStrategy,
+        raw_config: dict[str, Any],
+        *,
+        events: Sequence[StrategyEvent] = (),
+        constraints_provider: ConstraintsProvider | None = None,
+        limits_provider: LimitsProvider | None = None,
+        snapshot_provider: SnapshotProvider | None = None,
+        paper_exchange: PaperExchangeService | None = None,
+    ) -> StrategyCliRunResult:
         resolved_config = self.resolve_config(
             raw_config, strategy_name=strategy.__class__.__name__
         )
@@ -475,15 +496,20 @@ class StrategyCliService:
         self, signal: StrategySignal, runtime: StrategyRuntime
     ) -> BookSnapshot | None:
         market_data = _market_for_token(runtime, signal.token_id)
+        explicit_book_levels = market_data.get("book_levels")
+        if isinstance(explicit_book_levels, dict):
+            bids = _book_levels_from_payload(explicit_book_levels.get("bids"), side="BUY")
+            asks = _book_levels_from_payload(explicit_book_levels.get("asks"), side="SELL")
+        else:
+            bids = []
+            asks = []
         best_bid = _optional_decimal(market_data.get("best_bid"))
         best_ask = _optional_decimal(market_data.get("best_ask"))
-        if best_bid is None and best_ask is None:
+        if best_bid is None and best_ask is None and not bids and not asks:
             return None
-        bids = []
-        asks = []
-        if best_bid is not None:
+        if best_bid is not None and not bids:
             bids.append(BookLevel(side="BUY", price=best_bid, size=Decimal("100")))
-        if best_ask is not None:
+        if best_ask is not None and not asks:
             asks.append(BookLevel(side="SELL", price=best_ask, size=Decimal("100")))
         timestamp = _parse_datetime(market_data.get("event_ts")) or utc_now()
         return BookSnapshot(
@@ -515,6 +541,25 @@ class StrategyCliService:
             all_fills.extend(paper_result.fills)
             if paper_result.risk_decision is not None:
                 all_risks.append(paper_result.risk_decision)
+
+
+def _book_levels_from_payload(
+    rows: Any,
+    *,
+    side: str,
+) -> list[BookLevel]:
+    if not isinstance(rows, list):
+        return []
+    levels: list[BookLevel] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        price = _optional_decimal(row.get("price"))
+        size = _optional_decimal(row.get("size"))
+        if price is None or size is None:
+            continue
+        levels.append(BookLevel(side=side, price=price, size=size))
+    return levels
 
 
 def _mapping(value: object) -> dict[str, Any]:

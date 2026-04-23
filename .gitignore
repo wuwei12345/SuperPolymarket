@@ -4,3 +4,6 @@ __pycache__/
 .pytest_cache/
 .streamlit/
 .data/
+data/
+node_modules/
+.codex/

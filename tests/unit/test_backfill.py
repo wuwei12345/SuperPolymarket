@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -11,7 +12,8 @@ import httpx
 from polymarket_quant.adapters.polymarket import ClobClient, DataApiClient
 from polymarket_quant.domain.market import CanonicalMarket, MarketSourceMap, SourceLabel
 from polymarket_quant.domain.market_data import RawPayloadEnvelope, ReferenceToken
-from polymarket_quant.services.backfill import MarketDataBackfillService
+from polymarket_quant.services import StrategyCliService
+from polymarket_quant.services.backfill import MarketDataBackfillService, main
 from polymarket_quant.services.universe_selector import UniverseSelector
 
 
@@ -337,3 +339,20 @@ def test_readme_documents_phase2_backfill_command() -> None:
     assert "POLYMARKET_TOP_N=50" in readme
     assert "python -m polymarket_quant.services.backfill" in readme
     assert 'if __name__ == "__main__":' in backfill_source
+
+
+def test_backfill_main_requires_database_url_and_prints_actionable_error(
+    capsys, monkeypatch
+) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    exit_code = main([])
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "backfill requires PostgreSQL" in captured.err
+    assert "DATABASE_URL" in captured.err
+
+
+def test_services_package_uses_lazy_exports() -> None:
+    assert StrategyCliService.__name__ == "StrategyCliService"

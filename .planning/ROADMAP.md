@@ -3,7 +3,7 @@
 **Created:** 2026-04-18
 **Granularity:** Standard
 **Execution:** Parallel
-**Coverage:** 19 / 19 v1 requirements mapped
+**Coverage:** 22 / 22 v1 requirements mapped
 
 ## Summary
 
@@ -14,6 +14,7 @@
 | 3 | Simulation Exchange & Portfolio Ledger | 建立与 Polymarket 语义一致的模拟执行和账户账本 | SIM-01, SIM-02, SIM-03, RISK-01 | 4 | no |
 | 4 | Strategy Research Workbench | 建立可复现的策略开发、回测与实验框架 | STRAT-01, STRAT-02, STRAT-03, OPS-02 | 4 | no |
 | 5 | Operator Console & Safety Controls | 建立监控、风控和模式切换能力 | RISK-02, RISK-03, OPS-01, OPS-03 | 4 | yes |
+| 6 | Automation + Scheduled Reports | 建立自动化运行与定期报告输出能力 | AUTO-01, AUTO-02, AUTO-03 | 4 | no |
 
 ## Phase Details
 
@@ -74,7 +75,7 @@
 4. 每次实验都保存参数、数据窗口、版本和关键结果，方便复现。
 
 **UI hint**: no
-**Status**: Pending
+**Status**: Complete — executed 2026-04-22
 
 ## Phase 5: Operator Console & Safety Controls
 
@@ -89,12 +90,27 @@
 4. 用户可以在 replay、paper 和 live-disabled 模式间切换，而不需要修改策略代码。
 
 **UI hint**: yes
-**Status**: Pending
+**Status**: Complete — executed 2026-04-22
+
+## Phase 6: Automation + Scheduled Reports
+
+**Goal:** 为研究与运营提供一个可定时执行的自动化层，让系统可以按配置运行关键任务，并产出可追溯的日报与报告产物，而不引入真实交易或重型内建调度器。
+
+**Requirements:** AUTO-01, AUTO-02, AUTO-03
+
+**Success Criteria**
+1. 用户可以通过统一 CLI 和 YAML 配置触发一次 automation run，按顺序执行市场同步、实时健康检查、策略批量运行和报告生成。
+2. 系统可以为昨日自然日生成 Markdown 与 HTML 报告，覆盖市场同步、实时健康、策略运行、PnL、回撤、暴露、告警和 artifacts 索引。
+3. 自动化运行过程会保存 resolved config、步骤结果、错误信息和报告路径，便于复盘和比较。
+4. 系统可以通过 cron 或其他外部调度器稳定调用同一 CLI 入口，而不需要额外的长驻内建 scheduler。
+
+**UI hint**: no
+**Status**: Complete — executed 2026-04-22
 
 ## Notes
 
 - v1 明确是 simulation-first；真实下单桥接被保留到 v2。
-- 若后续确认要做 reward/rebate 优化或 live bridge，可在当前里程碑之后新增 Phase 5.1 / Phase 6。
+- 若后续确认要做 reward/rebate 优化、通知推送或 live bridge，可在当前里程碑之后新增 Phase 6.1+。
 
 ---
-*Last updated: 2026-04-19 after Phase 3 verification*
+*Last updated: 2026-04-22 after Phase 6 execution*

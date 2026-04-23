@@ -92,8 +92,8 @@ def test_mode_switch_requires_preflight_and_confirmation(tmp_path: Path) -> None
 def test_runs_artifacts_surface_is_not_a_homepage_default_pane() -> None:
     source = Path("src/polymarket_quant/ui/operator_console_app.py").read_text()
 
-    assert "Runs / Artifacts" in source
-    assert "secondary surface; not a homepage default pane" in source
+    assert "operator.runs_artifacts" in source
+    assert "operator.runs_artifacts_caption" in source
     assert OPERATOR_CONSOLE_DETAIL_PANES == ["Positions / Orders", "PnL / Exposure"]
     assert "Runs / Artifacts" not in OPERATOR_CONSOLE_DETAIL_PANES
 

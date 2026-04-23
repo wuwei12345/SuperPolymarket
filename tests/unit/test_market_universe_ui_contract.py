@@ -9,9 +9,11 @@ from polymarket_quant.domain.market import (
     SourceLabel,
 )
 from polymarket_quant.ui import contracts
+from polymarket_quant.ui.i18n import t
 from polymarket_quant.ui.market_universe_app import (
     apply_ui_filters,
     build_market_dataframe,
+    build_market_display_dataframe,
 )
 
 
@@ -106,6 +108,22 @@ def test_build_market_dataframe_uses_default_table_columns() -> None:
     )
 
 
+def test_market_universe_can_render_chinese_labels() -> None:
+    df = build_market_display_dataframe(build_market_dataframe([market()]), language="zh")
+
+    assert list(df.columns) == [
+        t("zh", "market_universe.col_question"),
+        t("zh", "market_universe.col_category"),
+        t("zh", "market_universe.col_liquidity"),
+        t("zh", "market_universe.col_end_date"),
+        t("zh", "market_universe.col_condition_id"),
+        t("zh", "market_universe.col_yes_token"),
+        t("zh", "market_universe.col_no_token"),
+        t("zh", "market_universe.col_source"),
+        "_restricted",
+    ]
+
+
 def test_apply_ui_filters_immediately_reduces_rows() -> None:
     df = build_market_dataframe(
         [
@@ -131,6 +149,28 @@ def test_apply_ui_filters_immediately_reduces_rows() -> None:
     )
 
     assert filtered["conditionId"].tolist() == ["0x" + "a" * 64]
+
+
+def test_apply_ui_filters_treats_chinese_all_as_no_category_filter() -> None:
+    df = build_market_dataframe(
+        [
+            market(condition_id="0x" + "a" * 64, category="Testing"),
+            market(condition_id="0x" + "b" * 64, category="Politics"),
+        ]
+    )
+
+    filtered = apply_ui_filters(
+        df,
+        {
+            "category": None,
+            "minimum_liquidity": 0,
+            "question_search": "",
+            "restricted_status": None,
+            "end_date_range": None,
+        },
+    )
+
+    assert filtered["conditionId"].tolist() == ["0x" + "a" * 64, "0x" + "b" * 64]
 
 
 def test_ui_module_does_not_define_out_of_scope_surfaces() -> None:

@@ -295,3 +295,48 @@ def test_cli_realtime_paper_writes_metrics_and_artifacts(tmp_path: Path) -> None
     assert (result.run_directory / "order_intents.parquet").exists()
     assert (result.run_directory / "fills.parquet").exists()
     assert result.metrics_summary["fill_rate"] > 0
+
+
+def test_snapshot_provider_uses_explicit_book_levels_from_market_payload(tmp_path: Path) -> None:
+    service = StrategyCliService(tmp_path, git_commit="deadbeef")
+    config_path = tmp_path / "phase4-realtime.yaml"
+    write_yaml_config(config_path, mode="realtime_paper")
+    raw_config = service.load_config(config_path)
+    resolved_config = service.resolve_config(raw_config, strategy_name="phase4_strategy")
+    event = StrategyEvent(
+        event_type=StrategyEventType.MARKET,
+        ts=instant(),
+        token_id="token-yes",
+        condition_id="0xcondition",
+        source="clob_ws",
+        payload={
+            "by_token": {
+                "token-yes": {
+                    "token_id": "token-yes",
+                    "condition_id": "0xcondition",
+                    "best_bid": Decimal("0.44"),
+                    "best_ask": Decimal("0.46"),
+                    "book_levels": {
+                        "bids": [{"price": Decimal("0.44"), "size": Decimal("25")}],
+                        "asks": [{"price": Decimal("0.46"), "size": Decimal("30")}],
+                    },
+                }
+            }
+        },
+    )
+    runtime = service._runtime(SilentStrategy(), resolved_config, [event])
+    runtime.on_event(event)
+
+    result = service._snapshot_from_runtime(
+        StrategySignal(
+            token_id="token-yes",
+            target_position=Decimal("5"),
+            ts=instant(),
+            reason_code="test_snapshot",
+        ),
+        runtime,
+    )
+
+    assert result is not None
+    assert result.bids[0].size == Decimal("25")
+    assert result.asks[0].size == Decimal("30")

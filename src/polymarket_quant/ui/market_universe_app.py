@@ -16,6 +16,7 @@ from polymarket_quant.domain.market import CanonicalMarket, MarketSourceMap
 from polymarket_quant.services.market_sync import MarketSyncService, SyncEvent
 from polymarket_quant.storage.market_store import MarketStore
 from polymarket_quant.ui.contracts import DEFAULT_COLUMNS, PAGE_TITLE, PRIMARY_CTA
+from polymarket_quant.ui.i18n import render_language_selector, t
 
 
 DEFAULT_DB_PATH = Path(os.environ.get("POLYMARKET_QUANT_DB", ".data/market_universe.sqlite"))
@@ -38,6 +39,21 @@ def build_market_dataframe(markets: list[CanonicalMarket]) -> pd.DataFrame:
             }
         )
     return pd.DataFrame(rows, columns=[*DEFAULT_COLUMNS, "_restricted"])
+
+
+def build_market_display_dataframe(df: pd.DataFrame, language: str = "en") -> pd.DataFrame:
+    return df.rename(
+        columns={
+            "question": t(language, "market_universe.col_question"),
+            "category": t(language, "market_universe.col_category"),
+            "liquidity": t(language, "market_universe.col_liquidity"),
+            "endDate": t(language, "market_universe.col_end_date"),
+            "conditionId": t(language, "market_universe.col_condition_id"),
+            "yes token": t(language, "market_universe.col_yes_token"),
+            "no token": t(language, "market_universe.col_no_token"),
+            "source": t(language, "market_universe.col_source"),
+        }
+    )
 
 
 def apply_ui_filters(df: pd.DataFrame, filters: dict[str, Any]) -> pd.DataFrame:
@@ -84,11 +100,13 @@ def render_timeline(events: list[SyncEvent], expanded: bool = False) -> None:
     if latest:
         st.caption(f"{latest.status}: {latest.step} - {latest.message}")
     else:
-        st.caption("No market universe yet")
+        language = st.session_state.get("market_universe_language", "en")
+        st.caption(t(language, "market_universe.no_data_title"))
 
-    with st.expander("Sync timeline", expanded=expanded):
+    language = st.session_state.get("market_universe_language", "en")
+    with st.expander(t(language, "market_universe.timeline"), expanded=expanded):
         if not events:
-            st.write("Sync markets to load active markets that are accepting orders.")
+            st.write(t(language, "market_universe.no_data_body"))
             return
         for event in events:
             timestamp = event.timestamp.isoformat(timespec="seconds")
@@ -102,8 +120,10 @@ def main() -> None:
     if st is None:
         raise RuntimeError("streamlit is required to run the Market Universe app")
 
-    st.set_page_config(page_title=PAGE_TITLE, layout="wide")
+    language = st.session_state.get("market_universe_language", "en") if st is not None else "en"
+    st.set_page_config(page_title=t(language, "market_universe.page_title"), layout="wide")
     _inject_style()
+    language = render_language_selector("market_universe_language")
 
     store = MarketStore(DEFAULT_DB_PATH)
     if "sync_events" not in st.session_state:
@@ -111,10 +131,10 @@ def main() -> None:
 
     header_left, header_right = st.columns([4, 1])
     with header_left:
-        st.title(PAGE_TITLE)
-        st.caption("active + accepting orders")
+        st.title(t(language, "market_universe.page_title"))
+        st.caption(t(language, "market_universe.caption"))
     with header_right:
-        if st.button(PRIMARY_CTA, use_container_width=True):
+        if st.button(t(language, "market_universe.primary_cta"), use_container_width=True):
             service = MarketSyncService(
                 gamma_client=GammaClient(),
                 clob_client=ClobClient(),
@@ -123,72 +143,89 @@ def main() -> None:
             result = service.sync_once()
             st.session_state["sync_events"] = result.events
             if result.errors and result.written_count == 0:
-                st.error("Sync failed. Check the timeline and try again.")
+                st.error(t(language, "market_universe.sync_failed"))
             else:
-                st.success("Market universe updated")
+                st.success(t(language, "market_universe.sync_success"))
 
     markets = store.list_markets()
     df = build_market_dataframe(markets)
     filters = _render_filters(df)
     filtered = apply_ui_filters(df, filters)
+    display_df = build_market_display_dataframe(filtered[DEFAULT_COLUMNS], language=language)
 
     st.dataframe(
-        filtered[DEFAULT_COLUMNS],
+        display_df,
         use_container_width=True,
         hide_index=True,
         column_config={
-            "liquidity": st.column_config.NumberColumn("liquidity", format="%.2f")
+            t(language, "market_universe.col_liquidity"): st.column_config.NumberColumn(
+                t(language, "market_universe.col_liquidity"),
+                format="%.2f",
+            )
         },
     )
 
     if df.empty:
-        st.subheader("No market universe yet")
-        st.write("Sync markets to load active markets that are accepting orders.")
+        st.subheader(t(language, "market_universe.no_data_title"))
+        st.write(t(language, "market_universe.no_data_body"))
     elif filtered.empty:
-        st.subheader("No markets match these filters")
-        st.write("Change the filters or sync markets again.")
+        st.subheader(t(language, "market_universe.no_match_title"))
+        st.write(t(language, "market_universe.no_match_body"))
 
     render_timeline(st.session_state["sync_events"], expanded=False)
 
 
 def _render_filters(df: pd.DataFrame) -> dict[str, Any]:
-    st.sidebar.header("Filters")
-    categories = ["All"]
+    language = st.session_state.get("market_universe_language", "en")
+    st.sidebar.header(t(language, "market_universe.filters"))
+    all_label = t(language, "market_universe.all")
+    categories = [all_label]
     if not df.empty:
         categories.extend(sorted(value for value in df["category"].dropna().unique()))
 
-    category = st.sidebar.selectbox("Category", categories)
+    category_choice = st.sidebar.selectbox(
+        t(language, "market_universe.filter_category"), categories
+    )
     minimum_liquidity = st.sidebar.number_input(
-        "Minimum liquidity",
+        t(language, "market_universe.filter_min_liquidity"),
         min_value=0.0,
         value=0.0,
         step=100.0,
     )
-    end_date_range = st.sidebar.date_input("End date range", value=())
-    restricted_choice = st.sidebar.selectbox(
-        "Restricted status",
-        ["All", "Restricted", "Unrestricted"],
+    end_date_range = st.sidebar.date_input(
+        t(language, "market_universe.filter_end_date"),
+        value=(),
     )
-    question_search = st.sidebar.text_input("Question search")
+    restricted_choice = st.sidebar.selectbox(
+        t(language, "market_universe.filter_restricted"),
+        [
+            all_label,
+            t(language, "market_universe.restricted"),
+            t(language, "market_universe.unrestricted"),
+        ],
+    )
+    question_search = st.sidebar.text_input(t(language, "market_universe.filter_question"))
 
     restricted_status = {
-        "Restricted": True,
-        "Unrestricted": False,
+        t(language, "market_universe.restricted"): True,
+        t(language, "market_universe.unrestricted"): False,
     }.get(restricted_choice)
     filters = {
-        "category": category,
+        "category": None if category_choice == all_label else category_choice,
         "minimum_liquidity": minimum_liquidity,
         "end_date_range": end_date_range if len(end_date_range) == 2 else None,
         "restricted_status": restricted_status,
         "question_search": question_search,
     }
-    st.sidebar.caption(f"{_active_filter_count(filters)} active")
+    st.sidebar.caption(
+        t(language, "market_universe.active_filter_count", count=_active_filter_count(filters))
+    )
     return filters
 
 
 def _active_filter_count(filters: dict[str, Any]) -> int:
     count = 0
-    if filters.get("category") not in (None, "All"):
+    if filters.get("category") is not None:
         count += 1
     if filters.get("minimum_liquidity", 0) > 0:
         count += 1
@@ -208,11 +245,12 @@ def _format_end_date(market: CanonicalMarket) -> str | None:
 
 
 def _source_summary(source_map: MarketSourceMap) -> str:
+    language = st.session_state.get("market_universe_language", "en") if st is not None else "en"
     return (
-        f"question:{source_map.question.value}; "
-        f"liquidity:{source_map.liquidity.value}; "
-        f"condition:{source_map.condition_id.value}; "
-        f"tokens:{source_map.yes_token_id.value}"
+        f"{t(language, 'market_universe.source_question')}:{source_map.question.value}; "
+        f"{t(language, 'market_universe.source_liquidity')}:{source_map.liquidity.value}; "
+        f"{t(language, 'market_universe.source_condition')}:{source_map.condition_id.value}; "
+        f"{t(language, 'market_universe.source_tokens')}:{source_map.yes_token_id.value}"
     )
 
 

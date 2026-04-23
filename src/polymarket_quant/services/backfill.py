@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import argparse
 import os
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -19,6 +21,7 @@ from polymarket_quant.domain.market_data import (
 )
 from polymarket_quant.services.universe_selector import UniverseSelector
 from polymarket_quant.storage.market_data_store import MarketDataStore
+from polymarket_quant.storage.market_data_store import DATABASE_URL_ENV
 from polymarket_quant.storage.market_store import MarketStore
 
 
@@ -333,11 +336,41 @@ def _optional_decimal(value: Any) -> Decimal | None:
     return Decimal(str(value))
 
 
-def main() -> None:
-    top_n = int(os.getenv("POLYMARKET_TOP_N", "50"))
-    market_store = MarketStore(Path("data/markets.sqlite3"))
-    store = MarketDataStore()
-    selector = UniverseSelector(market_store, top_n=top_n)
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Backfill top active + accepting Polymarket tokens into PostgreSQL."
+    )
+    parser.add_argument(
+        "--database-url",
+        default=os.getenv(DATABASE_URL_ENV),
+        help="PostgreSQL DSN. Defaults to DATABASE_URL.",
+    )
+    parser.add_argument(
+        "--top-n",
+        type=int,
+        default=int(os.getenv("POLYMARKET_TOP_N", "50")),
+        help="Number of top tokens to backfill. Defaults to POLYMARKET_TOP_N or 50.",
+    )
+    parser.add_argument(
+        "--market-store",
+        default="data/markets.sqlite3",
+        help="Path to the Phase 1 SQLite market universe store.",
+    )
+    args = parser.parse_args(argv)
+
+    if not args.database_url:
+        print(
+            "backfill requires PostgreSQL. Set DATABASE_URL or pass --database-url.\n"
+            "Example:\n"
+            "  export DATABASE_URL=postgresql://localhost/polymarket_quant\n"
+            "  python -m polymarket_quant.services.backfill",
+            file=sys.stderr,
+        )
+        return 2
+
+    market_store = MarketStore(Path(args.market_store))
+    store = MarketDataStore(dsn=args.database_url)
+    selector = UniverseSelector(market_store, top_n=args.top_n)
     service = MarketDataBackfillService(selector, ClobClient(), store)
     result = service.backfill_top_tokens()
     print(
@@ -345,7 +378,8 @@ def main() -> None:
         f"{result.selected_count} tokens, {result.price_point_count} price points, "
         f"{result.book_snapshot_count} book snapshots"
     )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

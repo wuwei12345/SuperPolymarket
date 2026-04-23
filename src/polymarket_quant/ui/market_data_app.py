@@ -15,10 +15,30 @@ from polymarket_quant.ui.contracts import (
     MARKET_DATA_COLUMNS,
     MARKET_DATA_PAGE_TITLE,
 )
+from polymarket_quant.ui.i18n import render_language_selector, t
 
 
 def build_latest_dataframe(rows: list[dict[str, object]]) -> pd.DataFrame:
     return pd.DataFrame(rows).reindex(columns=MARKET_DATA_COLUMNS)
+
+
+def build_latest_display_dataframe(
+    rows: list[dict[str, object]], language: str = "en"
+) -> pd.DataFrame:
+    return build_latest_dataframe(rows).rename(
+        columns={
+            "question": t(language, "market_data.col_question"),
+            "token_id": t(language, "market_data.col_token_id"),
+            "outcome": t(language, "market_data.col_outcome"),
+            "best_bid": t(language, "market_data.col_best_bid"),
+            "best_ask": t(language, "market_data.col_best_ask"),
+            "spread": t(language, "market_data.col_spread"),
+            "midpoint": t(language, "market_data.col_midpoint"),
+            "last_trade_price": t(language, "market_data.col_last_trade"),
+            "source": t(language, "market_data.col_source"),
+            "gap_fill": t(language, "market_data.col_gap_fill"),
+        }
+    )
 
 
 def build_price_series_dataframe(rows: list[dict[str, object]]) -> pd.DataFrame:
@@ -33,6 +53,23 @@ def build_price_series_dataframe(rows: list[dict[str, object]]) -> pd.DataFrame:
             "source",
             "gap_fill",
         ]
+    )
+
+
+def build_price_series_display_dataframe(
+    rows: list[dict[str, object]], language: str = "en"
+) -> pd.DataFrame:
+    return build_price_series_dataframe(rows).rename(
+        columns={
+            "token_id": t(language, "market_data.col_token_id"),
+            "question": t(language, "market_data.col_question"),
+            "outcome": t(language, "market_data.col_outcome"),
+            "price": t(language, "market_data.col_price"),
+            "source_ts": t(language, "market_data.col_source_ts"),
+            "received_at": t(language, "market_data.col_received_at"),
+            "source": t(language, "market_data.col_source"),
+            "gap_fill": t(language, "market_data.col_gap_fill"),
+        }
     )
 
 
@@ -59,9 +96,10 @@ def apply_market_data_filters(
 def render_timeline(events: list[dict[str, Any]], expanded: bool = False) -> None:
     if st is None:
         return
-    with st.expander("Data timeline", expanded=expanded):
+    language = st.session_state.get("market_data_language", "en")
+    with st.expander(t(language, "market_data.timeline"), expanded=expanded):
         if not events:
-            st.write("No data events yet.")
+            st.write(t(language, "market_data.no_events"))
             return
         for event in events:
             st.write(
@@ -74,20 +112,22 @@ def main() -> None:
     if st is None:
         raise RuntimeError("streamlit is required to run the market data app")
 
-    st.set_page_config(page_title=MARKET_DATA_PAGE_TITLE, layout="wide")
-    st.title(MARKET_DATA_PAGE_TITLE)
-    st.caption("latest bid/ask, spread, midpoint, last price, source, gap fill")
+    language = st.session_state.get("market_data_language", "en") if st is not None else "en"
+    st.set_page_config(page_title=t(language, "market_data.page_title"), layout="wide")
+    language = render_language_selector("market_data_language")
+    st.title(t(language, "market_data.page_title"))
+    st.caption(t(language, "market_data.caption"))
 
     query_service = MarketDataQueryService(MarketDataStore())
     row_limit = st.sidebar.number_input(
-        "Row limit",
+        t(language, "market_data.row_limit"),
         min_value=10,
         max_value=1000,
         value=100,
         step=10,
     )
-    token_search = st.sidebar.text_input("Token search")
-    show_gap_rows = st.sidebar.checkbox("Show gap fill rows", value=True)
+    token_search = st.sidebar.text_input(t(language, "market_data.token_search"))
+    show_gap_rows = st.sidebar.checkbox(t(language, "market_data.show_gap_rows"), value=True)
 
     latest = query_service.latest_state_dataframe(limit=int(row_limit))
     filtered = apply_market_data_filters(
@@ -96,21 +136,32 @@ def main() -> None:
         show_gap_rows=show_gap_rows,
         row_limit=int(row_limit),
     )
-    st.dataframe(filtered[MARKET_DATA_COLUMNS], use_container_width=True, hide_index=True)
+    st.dataframe(
+        build_latest_display_dataframe(filtered.to_dict(orient="records"), language=language),
+        use_container_width=True,
+        hide_index=True,
+    )
 
     selected_token = None
     if not filtered.empty:
         selected_token = st.selectbox(
-            "Price curve token",
+            t(language, "market_data.price_curve_token"),
             filtered["token_id"].dropna().astype(str).tolist(),
         )
     if selected_token:
         series = query_service.price_series_dataframe(selected_token)
-        chart_df = build_price_series_dataframe(series.to_dict(orient="records"))
+        chart_df = build_price_series_display_dataframe(
+            series.to_dict(orient="records"),
+            language=language,
+        )
         if not chart_df.empty:
-            st.line_chart(chart_df, x="source_ts", y="price")
+            st.line_chart(
+                chart_df,
+                x=t(language, "market_data.col_source_ts"),
+                y=t(language, "market_data.col_price"),
+            )
         else:
-            st.write("No recent price curve yet.")
+            st.write(t(language, "market_data.no_recent_curve"))
 
     render_timeline(
         filtered[["received_at", "source", "gap_fill"]]

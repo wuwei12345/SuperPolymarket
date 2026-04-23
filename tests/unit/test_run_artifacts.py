@@ -7,7 +7,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from polymarket_quant.domain.simulation import OrderIntent, OrderSide
+from polymarket_quant.domain.simulation import (
+    OrderIntent,
+    OrderSide,
+    RiskCheckResult,
+    RiskDecision,
+    RiskDecisionType,
+)
 from polymarket_quant.domain.strategy import (
     ResolvedRunConfig,
     RunManifest,
@@ -147,3 +153,34 @@ def test_manifest_persists_resolved_config_and_data_scope(tmp_path: Path) -> Non
     assert saved_manifest["universe_snapshot"]["selection"]["top_n"] == 25
     assert saved_manifest["universe_snapshot"]["includes_gap_fill"] is True
     assert saved_manifest["artifact_files"]["fills"] == "fills.parquet"
+
+
+def test_writer_sanitizes_empty_struct_fields_for_parquet(tmp_path: Path) -> None:
+    writer = RunArtifactBundleWriter(tmp_path)
+
+    writer.write_bundle(
+        manifest(),
+        risk_decisions=[
+            RiskDecision(
+                decision=RiskDecisionType.WARN,
+                client_order_id="order-1",
+                token_id="token-yes",
+                condition_id="0xcondition",
+                checks=[
+                    RiskCheckResult(
+                        code="spread",
+                        passed=True,
+                        severity="warning",
+                        message="spread ok",
+                        details={},
+                    )
+                ],
+                warnings=["spread ok"],
+            )
+        ],
+        strategy_log="done\n",
+        framework_log="done\n",
+    )
+
+    risk_frame = pd.read_parquet(tmp_path / "run-001" / "risk_decisions.parquet")
+    assert risk_frame.loc[0, "client_order_id"] == "order-1"
