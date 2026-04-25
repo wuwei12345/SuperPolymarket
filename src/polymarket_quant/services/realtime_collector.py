@@ -148,6 +148,15 @@ class MarketRealtimeCollector:
                         connection_id=self.connection_id,
                     )
                 )
+        if message_count == 0:
+            events.append(
+                _event(
+                    "Realtime collection ended without messages",
+                    "CLOB_WS",
+                    "warning",
+                    "No WebSocket market events were received before the connection ended",
+                )
+            )
         return RealtimeCollectorResult(
             message_count=message_count,
             raw_event_count=raw_event_count,
@@ -491,6 +500,8 @@ def _optional_decimal(value: Any) -> Decimal | None:
 
 async def _run_once() -> None:
     top_n = int(os.getenv("POLYMARKET_TOP_N", "50"))
+    raw_max_messages = os.getenv("POLYMARKET_MAX_MESSAGES")
+    max_messages = int(raw_max_messages) if raw_max_messages else None
     market_store = MarketStore(Path("data/markets.sqlite3"))
     selector = UniverseSelector(market_store, top_n=top_n)
     tokens = selector.select_top_tokens()
@@ -500,10 +511,17 @@ async def _run_once() -> None:
         MarketWebSocketClient(),
         store,
         tokens,
+        max_messages=max_messages,
         gap_fill_service=gap_fill,
     )
     result = await collector.collect_once()
     print(f"Collected {result.message_count} messages")
+    for event in result.events:
+        print(f"{event.status}: {event.step} - {event.message}")
+    if result.message_count == 0:
+        raise RuntimeError(
+            "Realtime collector received zero WebSocket messages; check websocket dependency, token IDs, and network connectivity"
+        )
 
 
 def main() -> None:

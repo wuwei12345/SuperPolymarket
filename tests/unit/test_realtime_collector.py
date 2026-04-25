@@ -38,7 +38,7 @@ def reference_token(token_id: str, rank: int = 1) -> ReferenceToken:
 
 
 class FakeWebSocket:
-    def __init__(self, messages: list[dict[str, Any]]) -> None:
+    def __init__(self, messages: list[dict[str, Any] | str]) -> None:
         self.messages = messages
         self.sent: list[str] = []
 
@@ -60,6 +60,8 @@ class FakeWebSocket:
             raise StopAsyncIteration
         message = self.messages[self._index]
         self._index += 1
+        if isinstance(message, str):
+            return message
         return json.dumps(message)
 
 
@@ -179,7 +181,7 @@ def test_market_ws_subscription_payload_uses_assets_ids_and_custom_feature() -> 
 
 @pytest.mark.asyncio
 async def test_market_ws_subscribe_sends_payload_and_yields_json() -> None:
-    fake_ws = FakeWebSocket([{"event_type": "best_bid_ask", "asset_id": "token-a"}])
+    fake_ws = FakeWebSocket(["PONG", {"event_type": "best_bid_ask", "asset_id": "token-a"}])
     client = MarketWebSocketClient(connector=lambda _url: fake_ws)
 
     messages = [message async for message in client.subscribe(["token-a"])]
@@ -215,6 +217,25 @@ async def test_collector_persists_raw_ws_event_before_normalizing() -> None:
         "upsert_best_bid_ask"
     )
     assert store.raw_events[0].source == "CLOB_WS"
+
+
+@pytest.mark.asyncio
+async def test_collector_surfaces_zero_message_websocket_sessions() -> None:
+    store = FakeStore()
+    collector = MarketRealtimeCollector(
+        FakeWsClient([]),
+        store,
+        [reference_token("token-a")],
+    )
+
+    result = await collector.collect_once()
+
+    assert result.message_count == 0
+    assert any(
+        event.step == "Realtime collection ended without messages"
+        and event.status == "warning"
+        for event in result.events
+    )
 
 
 @pytest.mark.asyncio
@@ -368,9 +389,11 @@ async def test_gap_fill_does_not_overwrite_reference_tokens() -> None:
 def test_realtime_readme_and_entrypoint_are_documented() -> None:
     readme = Path("README.md").read_text()
     source = Path("src/polymarket_quant/services/realtime_collector.py").read_text()
+    ws_source = Path("src/polymarket_quant/adapters/polymarket_ws.py").read_text()
 
     assert "## Phase 2 Realtime Collector" in readme
     assert "python -m polymarket_quant.services.realtime_collector" in readme
     assert "recent_history_minutes: int = 60" in source
     assert "record_gap_interval" in source
     assert "gap_fill=True" in source
+    assert "proxy=None" in ws_source

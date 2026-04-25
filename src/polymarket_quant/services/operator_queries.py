@@ -69,11 +69,21 @@ class OperatorQueryService:
         filters = filters or OperatorFilters()
         runs = self._run_contexts(filters)
         snapshots = [run["snapshot"] for run in runs if run["snapshot"] is not None]
+        fallback_rows = [] if snapshots else runs
         latest_market = self._latest_market_state()
         last_heartbeat = max(
             (snapshot.last_heartbeat for snapshot in snapshots),
             default=None,
         )
+        if last_heartbeat is None:
+            last_heartbeat = max(
+                (
+                    row.get("last_heartbeat")
+                    for row in fallback_rows
+                    if row.get("last_heartbeat") is not None
+                ),
+                default=None,
+            )
         last_market_update = max(
             (_parse_timestamp(row.get("received_at")) for row in latest_market),
             default=None,
@@ -83,15 +93,23 @@ class OperatorQueryService:
             default=None,
         )
         return {
-            "global_mode": self._global_mode(),
+            "global_mode": self._global_mode(fallback_rows),
             "connections": self.connections_provider(),
-            "strategy_summary": _strategy_state_summary(snapshots),
+            "strategy_summary": _strategy_state_summary(snapshots)
+            if snapshots
+            else _strategy_state_summary_from_rows(fallback_rows),
             "new_order_status": _worst_block_state(
                 [snapshot.new_order_status for snapshot in snapshots]
+                or [
+                    NewOrderBlockState(str(row["new_order_status"]))
+                    for row in fallback_rows
+                ]
             ),
             "high_priority_alerts": sum(
                 snapshot.alert_summary.Critical for snapshot in snapshots
-            ),
+            )
+            if snapshots
+            else sum(int(row.get("alerts", 0)) for row in fallback_rows),
             "last_updated": last_updated,
         }
 
@@ -455,8 +473,14 @@ class OperatorQueryService:
             return {}
         return {snapshot.run_id: snapshot for snapshot in self.runtime_registry.list_runs()}
 
-    def _global_mode(self) -> GlobalMode:
+    def _global_mode(self, fallback_rows: list[dict[str, Any]] | None = None) -> GlobalMode:
         if self.runtime_registry is None:
+            if fallback_rows:
+                modes = {str(row.get("mode")) for row in fallback_rows}
+                if "realtime_paper" in modes or "paper" in modes:
+                    return GlobalMode.PAPER
+                if "replay" in modes:
+                    return GlobalMode.REPLAY
             return GlobalMode.LIVE_DISABLED
         return self.runtime_registry.get_global_mode()
 
@@ -598,6 +622,20 @@ def _strategy_state_summary(snapshots: list[RuntimeStatusSnapshot]) -> dict[str,
     summary = {state.value: 0 for state in StrategyRuntimeState}
     for snapshot in snapshots:
         summary[snapshot.state.value] += 1
+    return summary
+
+
+def _strategy_state_summary_from_rows(rows: list[dict[str, Any]]) -> dict[str, int]:
+    summary = {state.value: 0 for state in StrategyRuntimeState}
+    seen_run_ids: set[str] = set()
+    for row in rows:
+        run_id = str(row.get("run_id"))
+        if run_id in seen_run_ids:
+            continue
+        seen_run_ids.add(run_id)
+        state = str(row.get("state", StrategyRuntimeState.FINISHED.value))
+        if state in summary:
+            summary[state] += 1
     return summary
 
 

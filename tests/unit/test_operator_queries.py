@@ -378,3 +378,38 @@ def test_operator_queries_list_runs_and_artifacts_from_manifest_bundle(
     assert rows[0]["artifact_files"]["positions"] == "positions.parquet"
     assert rows[0]["artifact_files"]["risk_decisions"] == "risk_decisions.parquet"
     assert rows[0]["run_directory"] == str(tmp_path / "run-a")
+
+
+def test_status_band_falls_back_to_latest_artifacts_without_runtime_registry(
+    tmp_path: Path,
+) -> None:
+    write_run_bundle(
+        tmp_path,
+        manifest_obj=manifest(
+            run_id="run-b",
+            strategy_name="momentum",
+            mode=RunMode.REALTIME_PAPER,
+            market_id="market-2",
+            event_id="event-2",
+            token_id="token-no",
+            day_offset=1,
+            metrics_summary={
+                "realized_pnl": Decimal("0"),
+                "unrealized_pnl": Decimal("0"),
+                "turnover": Decimal("12"),
+                "max_drawdown": Decimal("3"),
+                "exposure_peak": Decimal("4"),
+            },
+        ),
+        position_quantity="0",
+        order_status="FILLED",
+        risk_decision="ALLOW",
+    )
+
+    service = OperatorQueryService(tmp_path)
+    status_band = service.status_band()
+
+    assert status_band["global_mode"] == GlobalMode.PAPER
+    assert status_band["strategy_summary"]["finished"] == 1
+    assert status_band["new_order_status"] == NewOrderBlockState.ALLOWED
+    assert status_band["last_updated"] == instant(1) + timedelta(hours=1)

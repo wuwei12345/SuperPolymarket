@@ -58,6 +58,9 @@ class ReportBuilder:
                 automation_run, AutomationTaskName.REALTIME_HEALTH_CHECK
             ),
             "strategy_batch": _task_details(automation_run, AutomationTaskName.STRATEGY_BATCH),
+            "strategy_results": _task_details(
+                automation_run, AutomationTaskName.STRATEGY_BATCH
+            ).get("strategies", []),
             "status_band": self.query_service.status_band(filters),
             "overview": self.query_service.overview(group_by="strategy", filters=filters),
             "pnl_exposure": window_pnl_exposure or current_pnl_exposure,
@@ -155,6 +158,21 @@ class ReportBuilder:
                         ", ".join(context["strategy_batch"].get("run_ids", [])) or "none",
                     ),
                 ]
+            ),
+            "",
+            "### Strategy Details",
+            render_table(
+                ["strategy", "status", "run_id", "error"],
+                [
+                    [
+                        row.get("name"),
+                        row.get("status"),
+                        row.get("run_id") or "-",
+                        row.get("error") or "-",
+                    ]
+                    for row in context["strategy_results"]
+                ],
+                empty_message="_No strategies were executed._",
             ),
             "",
             f"## {PNL_EXPOSURE_TITLE}",

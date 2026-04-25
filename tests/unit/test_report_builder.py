@@ -151,6 +151,52 @@ def test_markdown_report_marks_unhealthy_tasks(tmp_path: Path) -> None:
     assert "realtime_health_check: failed" in markdown_report
 
 
+def test_markdown_report_lists_strategy_level_failures(tmp_path: Path) -> None:
+    artifact_root = tmp_path / "runs"
+    builder = ReportBuilder(OperatorQueryService(artifact_root))
+    failed_run = automation_run(tmp_path).model_copy(
+        update={
+            "task_results": [
+                task.model_copy(
+                    update={
+                        "status": AutomationTaskStatus.FAILED,
+                        "message": "strategy batch failed",
+                        "details": {
+                            "successful_runs": 1,
+                            "failed_strategies": 1,
+                            "strategies": [
+                                {
+                                    "name": "bad_strategy",
+                                    "status": "failed",
+                                    "error": "intentional failure",
+                                },
+                                {
+                                    "name": "good_strategy",
+                                    "status": "success",
+                                    "run_id": "good-run-001",
+                                },
+                            ],
+                        },
+                        "run_ids": ["good-run-001"],
+                    }
+                )
+                if task.task_name == AutomationTaskName.STRATEGY_BATCH
+                else task
+                for task in automation_run(tmp_path).task_results
+            ]
+        }
+    )
+
+    markdown_report = builder.render_markdown_report(
+        builder.build_report_context(failed_run, now=instant())
+    )
+
+    assert "### Strategy Details" in markdown_report
+    assert "bad_strategy" in markdown_report
+    assert "intentional failure" in markdown_report
+    assert "good-run-001" in markdown_report
+
+
 def test_report_context_falls_back_to_current_automation_runs_when_window_is_empty(
     tmp_path: Path,
 ) -> None:
