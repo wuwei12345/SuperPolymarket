@@ -18,13 +18,10 @@ from polymarket_quant.services.operator_safety import (
     OperatorSafetyService,
 )
 from polymarket_quant.ui.contracts import (
-    OPERATOR_CONSOLE_DETAIL_PANES,
-    OPERATOR_CONSOLE_FILTERS,
     OPERATOR_CONSOLE_LAYOUT,
-    OPERATOR_CONSOLE_OVERVIEW_COLUMNS,
-    OPERATOR_CONSOLE_PAGE_TITLE,
     OPERATOR_CONSOLE_SEVERITIES,
     OPERATOR_CONSOLE_STATUS_FIELDS,
+    SIMULATION_CURVE_COLUMNS,
 )
 from polymarket_quant.ui.i18n import render_language_selector, t
 
@@ -137,6 +134,55 @@ def build_timeline_dataframe(rows: list[dict[str, Any]], language: str = "en") -
     )
 
 
+def build_simulation_curves_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
+    frame = pd.DataFrame(rows).reindex(columns=SIMULATION_CURVE_COLUMNS)
+    if frame.empty:
+        return frame
+    frame = frame.copy()
+    frame["ts"] = pd.to_datetime(frame["ts"])
+    for column in ["equity", "pnl", "drawdown", "exposure"]:
+        frame[column] = pd.to_numeric(frame[column], errors="coerce").fillna(0)
+    return frame.sort_values("ts")
+
+
+def build_simulation_positions_dataframe(
+    rows: list[dict[str, Any]], language: str = "en"
+) -> pd.DataFrame:
+    columns = [
+        ("market", t(language, "operator.col_market")),
+        ("direction", t(language, "operator.col_direction")),
+        ("avg_price", t(language, "operator.col_avg_price")),
+        ("current_price", t(language, "operator.col_current_price")),
+        ("quantity", t(language, "operator.col_quantity")),
+        ("cost", t(language, "operator.col_cost")),
+        ("market_value", t(language, "operator.col_market_value")),
+        ("pnl", t(language, "operator.col_pnl")),
+        ("strategy", t(language, "operator.col_strategy")),
+    ]
+    return pd.DataFrame(rows).reindex(columns=[source for source, _label in columns]).rename(
+        columns={source: label for source, label in columns}
+    )
+
+
+def build_simulation_trades_dataframe(
+    rows: list[dict[str, Any]], language: str = "en"
+) -> pd.DataFrame:
+    columns = [
+        ("time", t(language, "operator.col_time")),
+        ("strategy", t(language, "operator.col_strategy")),
+        ("action", t(language, "operator.col_action")),
+        ("market", t(language, "operator.col_market")),
+        ("direction", t(language, "operator.col_direction")),
+        ("price", t(language, "operator.col_price")),
+        ("quantity", t(language, "operator.col_quantity")),
+        ("amount", t(language, "operator.col_amount")),
+        ("reason_code", t(language, "operator.col_reason_code")),
+    ]
+    return pd.DataFrame(rows).reindex(columns=[source for source, _label in columns]).rename(
+        columns={source: label for source, label in columns}
+    )
+
+
 def main(query_service: OperatorQueryService | None = None) -> None:
     if st is None:
         raise RuntimeError("streamlit is required to run the operator console")
@@ -147,39 +193,190 @@ def main(query_service: OperatorQueryService | None = None) -> None:
     language = render_language_selector("operator_console_language")
     st.title(t(language, "operator.page_title"))
     st.caption(t(language, "operator.caption"))
-    st.caption(t(language, "operator.severity_ladder"))
 
     query_service = query_service or OperatorQueryService(DEFAULT_ARTIFACT_ROOT)
     filters = render_shared_filters()
-    status_band = query_service.status_band(filters)
+    page = render_page_navigation(language)
+
+    if page == "dashboard":
+        render_simulation_dashboard(query_service, filters, language=language)
+    elif page == "run_details":
+        render_run_details_page(query_service, filters, language=language)
+    elif page == "system_health":
+        render_system_health_page(query_service, filters, language=language)
+    else:
+        render_debug_page(query_service, filters, language=language)
+
+
+def render_page_navigation(language: str = "en") -> str:
+    if st is None:
+        return "dashboard"
+    page_options = {
+        t(language, "operator.nav_dashboard"): "dashboard",
+        t(language, "operator.nav_run_details"): "run_details",
+        t(language, "operator.nav_system_health"): "system_health",
+        t(language, "operator.nav_debug"): "debug",
+    }
+    selected = st.sidebar.radio(
+        t(language, "operator.nav"),
+        list(page_options.keys()),
+        key="operator_console_page",
+    )
+    return page_options[selected]
+
+
+def render_simulation_dashboard(
+    query_service: OperatorQueryService,
+    filters: OperatorFilters,
+    *,
+    language: str = "en",
+) -> None:
+    if st is None:
+        return
+
+    summary = query_service.simulation_summary(filters)
+    curve_rows = query_service.simulation_curves(filters)
+    position_rows = query_service.simulation_positions(filters)
+    trade_rows = query_service.simulation_trades(filters)
+    alert_summary = query_service.risk_alert_summary(filters)
+
+    st.subheader(t(language, "operator.results"))
+    render_result_metrics(summary, language=language)
+
+    st.subheader(t(language, "operator.curves"))
+    render_result_curves(curve_rows, language=language)
+
+    left, right = st.columns([3, 2])
+    with left:
+        st.subheader(t(language, "operator.current_positions"))
+        positions = build_simulation_positions_dataframe(position_rows, language=language)
+        if positions.empty:
+            st.caption(t(language, "operator.no_positions"))
+        st.dataframe(positions, use_container_width=True, hide_index=True)
+    with right:
+        render_risk_summary(alert_summary, language=language)
+
+    st.subheader(t(language, "operator.recent_trades"))
+    trades = build_simulation_trades_dataframe(trade_rows, language=language)
+    if trades.empty:
+        st.caption(t(language, "operator.no_trades"))
+    st.dataframe(trades, use_container_width=True, hide_index=True)
+
+
+def render_run_details_page(
+    query_service: OperatorQueryService,
+    filters: OperatorFilters,
+    *,
+    language: str = "en",
+) -> None:
+    if st is None:
+        return
+    st.caption(t(language, "operator.run_details_caption"))
     overview_rows = query_service.overview(group_by="strategy", filters=filters)
     positions_orders = query_service.positions_orders(filters)
     pnl_rows = query_service.pnl_exposure(filters)
-    timeline_rows = query_service.alerts_timeline(filters)
 
-    render_status_band(status_band, language=language)
     st.subheader(t(language, "operator.overview"))
     st.dataframe(
         build_overview_dataframe(overview_rows, language=language),
         use_container_width=True,
         hide_index=True,
     )
-
     left, right = st.columns(2)
     with left:
         render_positions_orders_block(positions_orders, language=language)
     with right:
         render_pnl_exposure_block(pnl_rows, language=language)
+    render_runs_artifacts_surface(query_service, filters, language=language, expanded=True)
 
+
+def render_system_health_page(
+    query_service: OperatorQueryService,
+    filters: OperatorFilters,
+    *,
+    language: str = "en",
+) -> None:
+    if st is None:
+        return
+    st.caption(t(language, "operator.system_health_caption"))
+    render_status_band(query_service.status_band(filters), language=language)
     render_mode_switch(query_service, filters, language=language)
+
+
+def render_debug_page(
+    query_service: OperatorQueryService,
+    filters: OperatorFilters,
+    *,
+    language: str = "en",
+) -> None:
+    if st is None:
+        return
+    st.caption(t(language, "operator.debug_caption"))
     st.subheader(t(language, "operator.timeline"))
     st.caption(t(language, "operator.timeline_caption"))
     st.dataframe(
-        build_timeline_dataframe(timeline_rows, language=language),
+        build_timeline_dataframe(query_service.alerts_timeline(filters), language=language),
         use_container_width=True,
         hide_index=True,
     )
-    render_runs_artifacts_surface(query_service, filters, language=language)
+    render_runs_artifacts_surface(query_service, filters, language=language, expanded=False)
+
+
+def render_result_metrics(summary: dict[str, Any], *, language: str = "en") -> None:
+    if st is None:
+        return
+    metric_rows = [
+        [
+            (t(language, "operator.metric_total_pnl"), summary.get("total_pnl")),
+            (t(language, "operator.metric_today_pnl"), summary.get("today_pnl")),
+            (t(language, "operator.metric_realized_pnl"), summary.get("realized_pnl")),
+            (t(language, "operator.metric_unrealized_pnl"), summary.get("unrealized_pnl")),
+        ],
+        [
+            (t(language, "operator.metric_current_exposure"), summary.get("current_exposure")),
+            (t(language, "operator.metric_max_drawdown"), summary.get("max_drawdown")),
+            (t(language, "operator.metric_positions"), summary.get("positions")),
+            (t(language, "operator.metric_open_orders"), summary.get("open_orders")),
+        ],
+    ]
+    for metric_row in metric_rows:
+        columns = st.columns(4)
+        for column, (label, value) in zip(columns, metric_row):
+            with column:
+                st.metric(label, _format_metric(value))
+
+
+def render_result_curves(rows: list[dict[str, Any]], *, language: str = "en") -> None:
+    if st is None:
+        return
+    curves = build_simulation_curves_dataframe(rows)
+    if curves.empty:
+        st.caption(t(language, "operator.no_curve"))
+        return
+    left, middle, right = st.columns(3)
+    with left:
+        st.caption(t(language, "operator.pnl_equity_curve"))
+        st.line_chart(curves, x="ts", y=["pnl", "equity"], use_container_width=True)
+    with middle:
+        st.caption(t(language, "operator.drawdown_curve"))
+        st.line_chart(curves, x="ts", y="drawdown", use_container_width=True)
+    with right:
+        st.caption(t(language, "operator.exposure_curve"))
+        st.line_chart(curves, x="ts", y="exposure", use_container_width=True)
+
+
+def render_risk_summary(alert_summary: dict[str, Any], *, language: str = "en") -> None:
+    if st is None:
+        return
+    st.subheader(t(language, "operator.risk_summary"))
+    st.caption(t(language, "operator.severity_ladder"))
+    counts = alert_summary.get("counts", {})
+    columns = st.columns(3)
+    for column, severity in zip(columns, ["Critical", "Warning", "Info"]):
+        with column:
+            st.metric(severity, counts.get(severity, 0))
+    latest = build_timeline_dataframe(alert_summary.get("latest", []), language=language)
+    st.dataframe(latest, use_container_width=True, hide_index=True)
 
 
 def render_shared_filters() -> OperatorFilters:
@@ -378,10 +575,11 @@ def render_runs_artifacts_surface(
     filters: OperatorFilters,
     *,
     language: str = "en",
+    expanded: bool = False,
 ) -> None:
     if st is None:
         return
-    with st.expander(t(language, "operator.runs_artifacts"), expanded=False):
+    with st.expander(t(language, "operator.runs_artifacts"), expanded=expanded):
         st.caption(t(language, "operator.runs_artifacts_caption"))
         st.dataframe(
             pd.DataFrame(query_service.runs_artifacts(filters)),
@@ -462,6 +660,18 @@ def _format_timestamp(value: Any, *, language: str = "en") -> str:
     if hasattr(value, "isoformat"):
         return value.isoformat()
     return str(value)
+
+
+def _format_metric(value: Any) -> str:
+    if value is None:
+        return "0"
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if numeric.is_integer():
+        return f"{numeric:,.0f}"
+    return f"{numeric:,.4f}".rstrip("0").rstrip(".")
 
 
 def _global_mode_from_label(value: str, *, language: str = "en") -> GlobalMode:

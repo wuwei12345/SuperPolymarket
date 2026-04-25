@@ -51,7 +51,54 @@ MARKET_DATA_COLUMNS = [
 MARKET_DATA_REQUIRED_SECTIONS = ["latest table", "price curve", "timeline log"]
 MARKET_DATA_FORBIDDEN_COPY = ["Trade", "Order", "Wallet", "PnL", "Position"]
 
-OPERATOR_CONSOLE_PAGE_TITLE = "Operator Console"
+OPERATOR_CONSOLE_PAGE_TITLE = "Simulation Result Dashboard"
+SIMULATION_DASHBOARD_PAGES = [
+    "Simulation Dashboard",
+    "Run Details",
+    "System Health",
+    "Debug",
+]
+SIMULATION_RESULT_METRICS = [
+    "total pnl",
+    "today pnl",
+    "realized pnl",
+    "unrealized pnl",
+    "current exposure",
+    "max drawdown",
+    "positions",
+    "open orders",
+]
+SIMULATION_POSITION_COLUMNS = [
+    "market",
+    "direction",
+    "avg price",
+    "current price",
+    "quantity",
+    "cost",
+    "market value",
+    "pnl",
+    "strategy",
+]
+SIMULATION_TRADE_COLUMNS = [
+    "time",
+    "strategy",
+    "action",
+    "market",
+    "direction",
+    "price",
+    "quantity",
+    "amount",
+    "reason_code",
+]
+SIMULATION_CURVE_COLUMNS = [
+    "ts",
+    "equity",
+    "pnl",
+    "drawdown",
+    "exposure",
+    "strategy",
+    "run_id",
+]
 OPERATOR_CONSOLE_STATUS_FIELDS = [
     "Run Mode",
     "Connection Status",
@@ -84,9 +131,14 @@ OPERATOR_CONSOLE_OVERVIEW_COLUMNS = [
 OPERATOR_CONSOLE_DETAIL_PANES = ["Positions / Orders", "PnL / Exposure"]
 OPERATOR_CONSOLE_SEVERITIES = ["Critical", "Warning", "Info"]
 OPERATOR_CONSOLE_LAYOUT = {
-    "status_band": "top-fixed",
+    "result_metrics": "top",
+    "curves": "main-upper",
+    "positions": "main-middle",
+    "trades": "main-lower",
+    "risk_summary": "side-or-lower",
+    "status_band": "secondary-system-health",
     "filters": "left",
-    "overview": "main-upper",
-    "details": "main-lower",
-    "timeline": "bottom",
+    "overview": "secondary-run-details",
+    "details": "secondary-run-details",
+    "timeline": "secondary-debug",
 }

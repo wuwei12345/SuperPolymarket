@@ -10,18 +10,29 @@ from polymarket_quant.ui.contracts import (
     OPERATOR_CONSOLE_PAGE_TITLE,
     OPERATOR_CONSOLE_SEVERITIES,
     OPERATOR_CONSOLE_STATUS_FIELDS,
+    SIMULATION_DASHBOARD_PAGES,
+    SIMULATION_POSITION_COLUMNS,
+    SIMULATION_TRADE_COLUMNS,
 )
 from polymarket_quant.ui.i18n import t
 from polymarket_quant.ui.operator_console_app import (
     build_overview_dataframe,
     build_pnl_exposure_dataframe,
     build_positions_orders_dataframe,
+    build_simulation_positions_dataframe,
+    build_simulation_trades_dataframe,
     build_timeline_dataframe,
 )
 
 
-def test_operator_console_contract_matches_phase5_context() -> None:
-    assert OPERATOR_CONSOLE_PAGE_TITLE == "Operator Console"
+def test_operator_console_contract_matches_simulation_dashboard_context() -> None:
+    assert OPERATOR_CONSOLE_PAGE_TITLE == "Simulation Result Dashboard"
+    assert SIMULATION_DASHBOARD_PAGES == [
+        "Simulation Dashboard",
+        "Run Details",
+        "System Health",
+        "Debug",
+    ]
     assert OPERATOR_CONSOLE_STATUS_FIELDS == [
         "Run Mode",
         "Connection Status",
@@ -54,11 +65,16 @@ def test_operator_console_contract_matches_phase5_context() -> None:
     assert OPERATOR_CONSOLE_DETAIL_PANES == ["Positions / Orders", "PnL / Exposure"]
     assert OPERATOR_CONSOLE_SEVERITIES == ["Critical", "Warning", "Info"]
     assert OPERATOR_CONSOLE_LAYOUT == {
-        "status_band": "top-fixed",
+        "result_metrics": "top",
+        "curves": "main-upper",
+        "positions": "main-middle",
+        "trades": "main-lower",
+        "risk_summary": "side-or-lower",
+        "status_band": "secondary-system-health",
         "filters": "left",
-        "overview": "main-upper",
-        "details": "main-lower",
-        "timeline": "bottom",
+        "overview": "secondary-run-details",
+        "details": "secondary-run-details",
+        "timeline": "secondary-debug",
     }
 
 
@@ -97,6 +113,42 @@ def test_operator_console_dataframe_helpers_keep_contract_columns() -> None:
     assert list(timeline.columns) == ["ts", "severity", "strategy", "message"]
 
 
+def test_simulation_dashboard_dataframe_helpers_keep_user_result_columns() -> None:
+    positions = build_simulation_positions_dataframe(
+        [
+            {
+                "market": "market-1",
+                "direction": "long",
+                "avg_price": "0.50",
+                "current_price": "0.55",
+                "quantity": "10",
+                "cost": "5",
+                "market_value": "5.5",
+                "pnl": "0.5",
+                "strategy": "stress",
+            }
+        ]
+    )
+    trades = build_simulation_trades_dataframe(
+        [
+            {
+                "time": "2026-04-22T08:00:00Z",
+                "strategy": "stress",
+                "action": "buy",
+                "market": "market-1",
+                "direction": "long",
+                "price": "0.50",
+                "quantity": "10",
+                "amount": "5",
+                "reason_code": "bootstrap_enter",
+            }
+        ]
+    )
+
+    assert list(positions.columns) == SIMULATION_POSITION_COLUMNS
+    assert list(trades.columns) == SIMULATION_TRADE_COLUMNS
+
+
 def test_operator_console_can_render_chinese_labels() -> None:
     overview = build_overview_dataframe(
         [
@@ -132,6 +184,10 @@ def test_operator_console_can_render_chinese_labels() -> None:
     assert t("zh", "operator.col_strategy_name") in overview.columns
     assert t("zh", "operator.col_token_id") in positions.columns
     assert t("zh", "operator.col_realized_pnl") in pnl.columns
+    assert t("zh", "operator.col_market") in build_simulation_positions_dataframe(
+        [{"market": "市场", "direction": "long"}],
+        language="zh",
+    ).columns
     assert list(timeline.columns) == [
         t("zh", "operator.col_ts"),
         t("zh", "operator.col_severity"),
@@ -146,6 +202,10 @@ def test_operator_console_is_single_page_not_tab_first() -> None:
     assert "def main(" in source
     assert "st.sidebar" in source
     assert "Language / 语言" in source or "render_language_selector" in source
+    assert "operator.nav_dashboard" in source
+    assert "operator.nav_run_details" in source
+    assert "operator.nav_system_health" in source
+    assert "operator.nav_debug" in source
     assert "operator.col_last_heartbeat" in source
     assert "operator.detail_positions_orders" in source
     assert "operator.detail_pnl_exposure" in source

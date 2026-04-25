@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Protocol
@@ -295,6 +295,224 @@ class OperatorQueryService:
             if manifest.run_id in run_id_set
         ]
 
+    def simulation_summary(self, filters: OperatorFilters | None = None) -> dict[str, Any]:
+        filters = filters or OperatorFilters()
+        manifests = self._selected_manifests(filters)
+        today = datetime.now(timezone.utc).date()
+        realized_pnl = sum(
+            _as_decimal(manifest.metrics_summary.get("realized_pnl"))
+            for manifest in manifests
+        )
+        unrealized_pnl = sum(
+            _as_decimal(manifest.metrics_summary.get("unrealized_pnl"))
+            for manifest in manifests
+        )
+        today_pnl = sum(
+            _as_decimal(manifest.metrics_summary.get("realized_pnl"))
+            + _as_decimal(manifest.metrics_summary.get("unrealized_pnl"))
+            for manifest in manifests
+            if (manifest.end_time or manifest.start_time).date() == today
+        )
+        max_drawdown = max(
+            (_as_decimal(manifest.metrics_summary.get("max_drawdown")) for manifest in manifests),
+            default=Decimal("0"),
+        )
+
+        positions = self.simulation_positions(filters)
+        open_orders = [
+            order
+            for manifest in manifests
+            for order in self._load_artifact_rows(manifest, "orders")
+            if _is_open_order(order)
+        ]
+        if filters.token:
+            open_orders = [
+                order for order in open_orders if str(order.get("token_id")) == filters.token
+            ]
+        current_exposure = sum(_as_decimal(row.get("market_value")) for row in positions)
+        if current_exposure == 0:
+            current_exposure = max(
+                (_as_decimal(manifest.metrics_summary.get("exposure_peak")) for manifest in manifests),
+                default=Decimal("0"),
+            )
+
+        return {
+            "total_pnl": realized_pnl + unrealized_pnl,
+            "today_pnl": today_pnl,
+            "realized_pnl": realized_pnl,
+            "unrealized_pnl": unrealized_pnl,
+            "current_exposure": current_exposure,
+            "max_drawdown": max_drawdown,
+            "positions": len(positions),
+            "open_orders": len(open_orders),
+        }
+
+    def simulation_curves(self, filters: OperatorFilters | None = None) -> list[dict[str, Any]]:
+        filters = filters or OperatorFilters()
+        rows: list[dict[str, Any]] = []
+        for manifest in self._selected_manifests(filters):
+            timeline = self._load_artifact_rows(manifest, "pnl_timeline")
+            if timeline:
+                for point in timeline:
+                    total_pnl = (
+                        _as_decimal(point.get("total_pnl"))
+                        if point.get("total_pnl") is not None
+                        else _as_decimal(point.get("realized_pnl"))
+                        + _as_decimal(point.get("unrealized_pnl"))
+                    )
+                    rows.append(
+                        {
+                            "ts": _parse_timestamp(
+                                point.get("ts")
+                                or point.get("created_at")
+                                or point.get("timestamp")
+                            )
+                            or manifest.end_time
+                            or manifest.start_time,
+                            "equity": _as_decimal(point.get("equity")) or total_pnl,
+                            "pnl": total_pnl,
+                            "drawdown": _as_decimal(point.get("drawdown"))
+                            or _as_decimal(manifest.metrics_summary.get("max_drawdown")),
+                            "exposure": _as_decimal(point.get("exposure"))
+                            or _as_decimal(manifest.metrics_summary.get("exposure_peak")),
+                            "strategy": manifest.strategy_name,
+                            "run_id": manifest.run_id,
+                        }
+                    )
+                continue
+
+            total_pnl = _as_decimal(manifest.metrics_summary.get("realized_pnl")) + _as_decimal(
+                manifest.metrics_summary.get("unrealized_pnl")
+            )
+            rows.append(
+                {
+                    "ts": manifest.end_time or manifest.start_time,
+                    "equity": total_pnl,
+                    "pnl": total_pnl,
+                    "drawdown": _as_decimal(manifest.metrics_summary.get("max_drawdown")),
+                    "exposure": _as_decimal(manifest.metrics_summary.get("exposure_peak")),
+                    "strategy": manifest.strategy_name,
+                    "run_id": manifest.run_id,
+                }
+            )
+        return sorted(rows, key=lambda row: row["ts"] or datetime.min)
+
+    def simulation_positions(self, filters: OperatorFilters | None = None) -> list[dict[str, Any]]:
+        filters = filters or OperatorFilters()
+        rows: list[dict[str, Any]] = []
+        for manifest in self._selected_manifests(filters):
+            for position in self._load_artifact_rows(manifest, "positions"):
+                token_id = str(position.get("token_id") or "")
+                if filters.token and token_id != filters.token:
+                    continue
+                quantity = _as_decimal(position.get("quantity"))
+                if quantity == 0:
+                    continue
+                mapping = _mapping_for_token(manifest, token_id)
+                avg_price = _as_decimal(
+                    position.get("avg_price")
+                    or position.get("average_price")
+                    or position.get("entry_price")
+                    or position.get("cost_basis")
+                    or position.get("mark_price")
+                )
+                current_price = _as_decimal(
+                    position.get("current_price") or position.get("mark_price")
+                )
+                abs_quantity = abs(quantity)
+                cost = abs_quantity * avg_price
+                market_value = abs_quantity * current_price
+                pnl = (
+                    _as_decimal(position.get("pnl"))
+                    if position.get("pnl") is not None
+                    else _as_decimal(position.get("unrealized_pnl"))
+                    if position.get("unrealized_pnl") is not None
+                    else market_value - cost
+                    if quantity > 0
+                    else cost - market_value
+                )
+                rows.append(
+                    {
+                        "market": _market_label(mapping, token_id),
+                        "direction": "long" if quantity > 0 else "short",
+                        "avg_price": avg_price,
+                        "current_price": current_price,
+                        "quantity": quantity,
+                        "cost": cost,
+                        "market_value": market_value,
+                        "pnl": pnl,
+                        "strategy": manifest.strategy_name,
+                        "token_id": token_id,
+                        "run_id": manifest.run_id,
+                    }
+                )
+        return rows
+
+    def simulation_trades(
+        self,
+        filters: OperatorFilters | None = None,
+        *,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        filters = filters or OperatorFilters()
+        rows: list[dict[str, Any]] = []
+        for manifest in self._selected_manifests(filters):
+            reason_by_order = {
+                str(intent.get("client_order_id")): intent.get("reason_code")
+                for intent in self._load_artifact_rows(manifest, "order_intents")
+                if intent.get("client_order_id")
+            }
+            reason_by_token: dict[str, Any] = {}
+            for signal in self._load_artifact_rows(manifest, "signals"):
+                if signal.get("token_id"):
+                    reason_by_token[str(signal.get("token_id"))] = signal.get("reason_code")
+            for fill in self._load_artifact_rows(manifest, "fills"):
+                token_id = str(fill.get("token_id") or "")
+                if filters.token and token_id != filters.token:
+                    continue
+                mapping = _mapping_for_token(manifest, token_id)
+                side = str(fill.get("side") or fill.get("action") or "").upper()
+                price = _as_decimal(fill.get("price"))
+                quantity = abs(_as_decimal(fill.get("size") or fill.get("quantity")))
+                client_order_id = str(fill.get("client_order_id") or "")
+                rows.append(
+                    {
+                        "time": _parse_timestamp(
+                            fill.get("created_at")
+                            or fill.get("filled_at")
+                            or fill.get("ts")
+                            or fill.get("timestamp")
+                        )
+                        or manifest.end_time
+                        or manifest.start_time,
+                        "strategy": manifest.strategy_name,
+                        "action": side.lower() if side else "fill",
+                        "market": _market_label(mapping, token_id),
+                        "direction": "long" if side in {"BUY", "BID"} else "short",
+                        "price": price,
+                        "quantity": quantity,
+                        "amount": price * quantity,
+                        "reason_code": reason_by_order.get(client_order_id)
+                        or reason_by_token.get(token_id)
+                        or fill.get("reason_code")
+                        or "",
+                        "run_id": manifest.run_id,
+                    }
+                )
+        return sorted(rows, key=lambda row: row["time"] or datetime.min, reverse=True)[:limit]
+
+    def risk_alert_summary(self, filters: OperatorFilters | None = None) -> dict[str, Any]:
+        timeline = self.alerts_timeline(filters)
+        counts = {"Critical": 0, "Warning": 0, "Info": 0}
+        for row in timeline:
+            severity = str(row.get("severity"))
+            if severity in counts:
+                counts[severity] += 1
+        return {
+            "counts": counts,
+            "latest": timeline[:5],
+        }
+
     def _run_contexts(self, filters: OperatorFilters) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         snapshots = self._runtime_snapshots()
@@ -550,6 +768,34 @@ def _matches_manifest_filters(
             continue
         return True
     return False
+
+
+def _is_open_order(order: dict[str, Any]) -> bool:
+    status = str(order.get("status") or "").upper()
+    return status not in {"", "FILLED", "CANCELED", "CANCELLED", "REJECTED", "EXPIRED"}
+
+
+def _mapping_for_token(manifest: RunManifest, token_id: str) -> dict[str, Any]:
+    for mapping in manifest.universe_snapshot.token_mappings or []:
+        candidates = {
+            str(mapping.get("token_id") or ""),
+            str(mapping.get("yes_token_id") or ""),
+            str(mapping.get("no_token_id") or ""),
+        }
+        if token_id in candidates:
+            return mapping
+    return (manifest.universe_snapshot.token_mappings or [{}])[0]
+
+
+def _market_label(mapping: dict[str, Any], token_id: str) -> str:
+    return str(
+        mapping.get("question")
+        or mapping.get("market")
+        or mapping.get("market_id")
+        or mapping.get("condition_id")
+        or token_id
+        or "unknown-market"
+    )
 
 
 def _matches_filters(context: dict[str, Any], filters: OperatorFilters) -> bool:

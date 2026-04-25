@@ -343,6 +343,105 @@ def test_operator_queries_merge_run_metrics_positions_orders_and_alerts(
     assert status_band["global_mode"] == GlobalMode.PAPER
 
 
+def test_operator_queries_build_simulation_result_dashboard_data(tmp_path: Path) -> None:
+    manifest_obj = manifest(
+        run_id="run-dashboard",
+        strategy_name="stress",
+        mode=RunMode.REALTIME_PAPER,
+        market_id="market-dashboard",
+        event_id="event-dashboard",
+        token_id="token-dashboard",
+        day_offset=0,
+        metrics_summary={
+            "realized_pnl": Decimal("7"),
+            "unrealized_pnl": Decimal("3"),
+            "turnover": Decimal("40"),
+            "max_drawdown": Decimal("2"),
+            "exposure_peak": Decimal("12"),
+        },
+    )
+    RunArtifactBundleWriter(tmp_path).write_bundle(
+        manifest_obj,
+        signals=[
+            {
+                "token_id": "token-dashboard",
+                "reason_code": "bootstrap_enter",
+                "target_exposure": "0.05",
+            }
+        ],
+        order_intents=[
+            {
+                "client_order_id": "order-dashboard",
+                "token_id": "token-dashboard",
+                "reason_code": "bootstrap_enter",
+            }
+        ],
+        orders=[
+            {
+                "client_order_id": "order-dashboard",
+                "token_id": "token-dashboard",
+                "status": "OPEN",
+            }
+        ],
+        fills=[
+            {
+                "client_order_id": "order-dashboard",
+                "token_id": "token-dashboard",
+                "side": "BUY",
+                "price": "0.50",
+                "size": "10",
+                "created_at": instant(0),
+            }
+        ],
+        positions=[
+            {
+                "strategy_id": "stress",
+                "token_id": "token-dashboard",
+                "quantity": "10",
+                "avg_price": "0.50",
+                "mark_price": "0.55",
+            }
+        ],
+        pnl_timeline=[
+            {
+                "ts": instant(0),
+                "total_pnl": "10",
+                "equity": "1010",
+                "drawdown": "2",
+                "exposure": "5.5",
+            }
+        ],
+        risk_decisions=[
+            {
+                "client_order_id": "order-dashboard",
+                "token_id": "token-dashboard",
+                "decision": "WARN",
+                "warnings": ["spread_warning"],
+                "created_at": instant(0),
+            }
+        ],
+    )
+
+    service = OperatorQueryService(tmp_path)
+
+    summary = service.simulation_summary()
+    curves = service.simulation_curves()
+    positions = service.simulation_positions()
+    trades = service.simulation_trades()
+    risk_summary = service.risk_alert_summary()
+
+    assert summary["total_pnl"] == Decimal("10")
+    assert summary["current_exposure"] == Decimal("5.50")
+    assert summary["positions"] == 1
+    assert summary["open_orders"] == 1
+    assert curves[0]["equity"] == Decimal("1010")
+    assert positions[0]["market"] == "market-dashboard"
+    assert positions[0]["market_value"] == Decimal("5.50")
+    assert trades[0]["amount"] == Decimal("5.00")
+    assert trades[0]["reason_code"] == "bootstrap_enter"
+    assert risk_summary["counts"]["Warning"] == 1
+
+
 def test_operator_queries_list_runs_and_artifacts_from_manifest_bundle(
     tmp_path: Path,
 ) -> None:
