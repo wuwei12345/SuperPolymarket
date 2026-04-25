@@ -1,0 +1,16 @@
+automation_config_path: automation.daily.yaml
+runtime_root: data/runtime
+poll_interval_seconds: 30
+tasks:
+  market_sync:
+    enabled: true
+    interval_seconds: 3600
+  realtime_health_check:
+    enabled: true
+    interval_seconds: 300
+  strategy_batch:
+    enabled: true
+    interval_seconds: 600
+  daily_report:
+    enabled: true
+    interval_seconds: 86400

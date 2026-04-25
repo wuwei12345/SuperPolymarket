@@ -101,7 +101,7 @@ def test_runs_artifacts_surface_is_not_a_homepage_default_pane() -> None:
 def test_readme_documents_phase5_operator_console() -> None:
     readme = Path("README.md").read_text()
 
-    assert "## Phase 5 Operator Console" in readme
+    assert "## Simulation Result Dashboard" in readme
     assert "streamlit run src/polymarket_quant/ui/operator_console_app.py" in readme
     assert "preflight" in readme
     assert "confirm" in readme

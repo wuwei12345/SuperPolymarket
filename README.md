@@ -151,21 +151,30 @@ Each run writes a stable artifact directory keyed by `run_id`, including:
 
 Run summaries are computed from factual artifacts, not log scraping. Phase 4 metrics include total return, realized/unrealized PnL, turnover, fill rate, cancel rate, average holding time, max drawdown, exposure peak, reject count, and slippage metrics.
 
-## Phase 5 Operator Console
+## Simulation Result Dashboard
 
-Run the Phase 5 browser page:
+Run the browser page:
 
 ```bash
 streamlit run src/polymarket_quant/ui/operator_console_app.py
 ```
 
-The first screen is a single-page operator surface:
+The first screen is now result-first. It reads `data/runtime/latest_snapshot.json` when available, then falls back to strategy artifacts under `data/runs`.
 
-- top status band for global mode, connection status, strategy state, alert summary, new-order block status, and last heartbeat
-- left shared filters for strategy, market/event, token, time window, mode, severity, and status
-- strategy-first overview table in the main area
-- two default detail blocks only: `Positions / Orders` and `PnL / Exposure`
-- read-only alert timeline at the bottom
+Default dashboard sections:
+
+- total PnL, today PnL, realized/unrealized PnL
+- current exposure, max drawdown, positions, open orders
+- PnL/Equity, Drawdown, and Exposure curves
+- current simulation positions
+- recent simulated trades
+- risk and alert summary
+
+Technical operator views are still available from the page selector:
+
+- `Run Details`: strategy overview, positions/orders, PnL/exposure, artifacts
+- `System Health`: connection state and guarded mode switch
+- `Debug`: full alert timeline and low-level troubleshooting
 
 Mode changes are guarded. The console requires a `preflight` step first, shows blocking and warning reasons, and only applies the switch after explicit `confirm` input.
 
@@ -206,3 +215,34 @@ Example `cron` entry:
 ```
 
 This keeps scheduling outside the application. Phase 6 still runs strategies in `realtime_paper` mode only.
+
+### Optional Background Daemon
+
+The one-shot CLI and cron flow remains supported. For a more continuous local simulation experience, run the lightweight daemon:
+
+```bash
+python -m polymarket_quant.services.background_daemon --config config/daemon.local.yaml
+```
+
+Run one due cycle and exit:
+
+```bash
+python -m polymarket_quant.services.background_daemon --config config/daemon.local.yaml --once
+```
+
+Request a graceful stop:
+
+```bash
+python -m polymarket_quant.services.background_daemon --config config/daemon.local.yaml --stop
+```
+
+Daemon runtime files:
+
+- `data/runtime/daemon_state.json`: heartbeat, current task, last/next execution time, latest error, latest run/report pointers
+- `data/runtime/latest_snapshot.json`: dashboard-ready simulation result snapshot
+- `data/runtime/daemon_state.lock`: single-instance lock
+- `data/runtime/stop.flag`: graceful stop flag
+
+Schedule config:
+
+- [config/daemon.local.yaml](/Users/wuwei/Documents/polymarketQuantification/config/daemon.local.yaml)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,9 @@ from polymarket_quant.ui.i18n import render_language_selector, t
 
 DEFAULT_ARTIFACT_ROOT = Path(
     os.environ.get("POLYMARKET_QUANT_ARTIFACT_ROOT", ".artifacts/strategy_runs")
+)
+DEFAULT_RUNTIME_SNAPSHOT = Path(
+    os.environ.get("POLYMARKET_QUANT_RUNTIME_SNAPSHOT", "data/runtime/latest_snapshot.json")
 )
 
 
@@ -234,11 +238,32 @@ def render_simulation_dashboard(
     if st is None:
         return
 
-    summary = query_service.simulation_summary(filters)
-    curve_rows = query_service.simulation_curves(filters)
-    position_rows = query_service.simulation_positions(filters)
-    trade_rows = query_service.simulation_trades(filters)
-    alert_summary = query_service.risk_alert_summary(filters)
+    snapshot = load_dashboard_snapshot(DEFAULT_RUNTIME_SNAPSHOT) if _filters_are_empty(filters) else None
+    summary = (
+        snapshot.get("summary_cards", {})
+        if snapshot is not None
+        else query_service.simulation_summary(filters)
+    )
+    curve_rows = (
+        snapshot.get("curves", [])
+        if snapshot is not None
+        else query_service.simulation_curves(filters)
+    )
+    position_rows = (
+        snapshot.get("current_positions", [])
+        if snapshot is not None
+        else query_service.simulation_positions(filters)
+    )
+    trade_rows = (
+        snapshot.get("recent_simulated_trades", [])
+        if snapshot is not None
+        else query_service.simulation_trades(filters)
+    )
+    alert_summary = (
+        snapshot.get("alert_summary", {})
+        if snapshot is not None
+        else query_service.risk_alert_summary(filters)
+    )
 
     st.subheader(t(language, "operator.results"))
     render_result_metrics(summary, language=language)
@@ -439,6 +464,33 @@ def render_shared_filters() -> OperatorFilters:
         status=_normalize_status_filter(status, language=language),
         window_start=window_start,
         window_end=window_end,
+    )
+
+
+def load_dashboard_snapshot(path: str | Path = DEFAULT_RUNTIME_SNAPSHOT) -> dict[str, Any] | None:
+    snapshot_path = Path(path)
+    if not snapshot_path.exists():
+        return None
+    try:
+        payload = json.loads(snapshot_path.read_text())
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _filters_are_empty(filters: OperatorFilters) -> bool:
+    return not any(
+        [
+            filters.strategy,
+            filters.market,
+            filters.event,
+            filters.token,
+            filters.mode,
+            filters.severity,
+            filters.status,
+            filters.window_start,
+            filters.window_end,
+        ]
     )
 
 

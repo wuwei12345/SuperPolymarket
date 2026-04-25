@@ -7,13 +7,14 @@ from pathlib import Path
 from typing import Any
 
 from polymarket_quant.adapters.polymarket import ClobClient, GammaClient
-from polymarket_quant.domain.automation import AutomationStrategyDefinition
+from polymarket_quant.domain.automation import AutomationResolvedConfig, AutomationStrategyDefinition
 from polymarket_quant.domain.market_data import utc_now
 from polymarket_quant.domain.operator import GlobalMode
 from polymarket_quant.domain.strategy import RunMode, StrategyEvent, StrategyEventType
 from polymarket_quant.services.automation_config import load_automation_config
 from polymarket_quant.services.automation_runner import AutomationRunResult, AutomationRunner
 from polymarket_quant.services.automation_tasks import load_object
+from polymarket_quant.services.dashboard_snapshot import DashboardSnapshotService
 from polymarket_quant.services.fill_engine import FillEngineConfig
 from polymarket_quant.services.market_sync import MarketSyncService
 from polymarket_quant.services.operator_queries import OperatorQueryService
@@ -37,6 +38,9 @@ class AutomationCliService:
 
     def run(self, config_path: str | Path) -> AutomationRunResult:
         resolved_config = load_automation_config(config_path)
+        return self.run_resolved(resolved_config)
+
+    def run_resolved(self, resolved_config: AutomationResolvedConfig) -> AutomationRunResult:
         runtime_registry = OperatorRuntimeRegistry(
             global_mode=_global_mode_for_automation(resolved_config.mode)
         )
@@ -57,7 +61,9 @@ class AutomationCliService:
                 ),
             )
         )
-        return runner.run(resolved_config)
+        result = runner.run(resolved_config)
+        self._write_dashboard_snapshot(resolved_config, result)
+        return result
 
     def _build_market_sync_callable(self, market_store_path: str):
         def _sync() -> Any:
@@ -69,6 +75,17 @@ class AutomationCliService:
             return service.sync_once()
 
         return _sync
+
+    def _write_dashboard_snapshot(
+        self,
+        resolved_config: AutomationResolvedConfig,
+        result: AutomationRunResult,
+    ) -> None:
+        runtime_root = Path(str(resolved_config.metadata.get("runtime_root", "data/runtime")))
+        DashboardSnapshotService(
+            OperatorQueryService(resolved_config.artifact_root),
+            snapshot_path=runtime_root / "latest_snapshot.json",
+        ).write_latest(automation_run=result.automation_run)
 
     def _execute_strategy(
         self,

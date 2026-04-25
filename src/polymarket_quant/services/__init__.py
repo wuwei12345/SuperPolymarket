@@ -12,6 +12,8 @@ from importlib import import_module
 __all__ = [
     "AutomationCliService",
     "AutomationRunner",
+    "BackgroundDaemonService",
+    "DashboardSnapshotService",
     "ExperimentMetricsService",
     "GapFillService",
     "MarketDataQueryService",
@@ -22,6 +24,7 @@ __all__ = [
     "PaperExchangeService",
     "PaperOrderResult",
     "RealtimeStrategyRunner",
+    "RuntimeStateStore",
     "SignalExecutionService",
     "StrategyCliService",
     "UniverseSelector",
@@ -36,6 +39,14 @@ _EXPORTS = {
     "AutomationRunner": (
         "polymarket_quant.services.automation_runner",
         "AutomationRunner",
+    ),
+    "BackgroundDaemonService": (
+        "polymarket_quant.services.background_daemon",
+        "BackgroundDaemonService",
+    ),
+    "DashboardSnapshotService": (
+        "polymarket_quant.services.dashboard_snapshot",
+        "DashboardSnapshotService",
     ),
     "ExperimentMetricsService": (
         "polymarket_quant.services.experiment_metrics",
@@ -76,6 +87,10 @@ _EXPORTS = {
     "RealtimeStrategyRunner": (
         "polymarket_quant.services.realtime_strategy_runner",
         "RealtimeStrategyRunner",
+    ),
+    "RuntimeStateStore": (
+        "polymarket_quant.services.runtime_state_store",
+        "RuntimeStateStore",
     ),
     "SignalExecutionService": (
         "polymarket_quant.services.signal_execution",
