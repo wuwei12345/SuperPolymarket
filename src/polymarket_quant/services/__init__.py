@@ -17,6 +17,7 @@ __all__ = [
     "ExperimentMetricsService",
     "GapFillService",
     "MarketDataQueryService",
+    "MarketDisplayService",
     "MarketRealtimeCollector",
     "OperatorQueryService",
     "OperatorRuntimeRegistry",
@@ -59,6 +60,10 @@ _EXPORTS = {
     "MarketDataQueryService": (
         "polymarket_quant.services.market_data_queries",
         "MarketDataQueryService",
+    ),
+    "MarketDisplayService": (
+        "polymarket_quant.services.market_display",
+        "MarketDisplayService",
     ),
     "MarketRealtimeCollector": (
         "polymarket_quant.services.realtime_collector",

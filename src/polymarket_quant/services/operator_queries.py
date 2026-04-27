@@ -19,6 +19,7 @@ from polymarket_quant.domain.operator import (
     StrategyRuntimeState,
 )
 from polymarket_quant.domain.strategy import RunManifest
+from polymarket_quant.services.experiment_metrics import ExperimentMetricsService
 from polymarket_quant.services.operator_runtime_registry import OperatorRuntimeRegistry
 
 
@@ -64,6 +65,7 @@ class OperatorQueryService:
         self.market_data_store = market_data_store
         self.connections_provider = connections_provider or (lambda: [])
         self._artifact_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        self._metrics_cache: dict[str, dict[str, Any]] = {}
 
     def status_band(self, filters: OperatorFilters | None = None) -> dict[str, Any]:
         filters = filters or OperatorFilters()
@@ -299,22 +301,23 @@ class OperatorQueryService:
         filters = filters or OperatorFilters()
         manifests = self._selected_manifests(filters)
         today = datetime.now(timezone.utc).date()
+        metrics_by_run = {manifest.run_id: self._metrics_for_manifest(manifest) for manifest in manifests}
         realized_pnl = sum(
-            _as_decimal(manifest.metrics_summary.get("realized_pnl"))
+            _as_decimal(metrics_by_run[manifest.run_id].get("realized_pnl"))
             for manifest in manifests
         )
         unrealized_pnl = sum(
-            _as_decimal(manifest.metrics_summary.get("unrealized_pnl"))
+            _as_decimal(metrics_by_run[manifest.run_id].get("unrealized_pnl"))
             for manifest in manifests
         )
         today_pnl = sum(
-            _as_decimal(manifest.metrics_summary.get("realized_pnl"))
-            + _as_decimal(manifest.metrics_summary.get("unrealized_pnl"))
+            _as_decimal(metrics_by_run[manifest.run_id].get("realized_pnl"))
+            + _as_decimal(metrics_by_run[manifest.run_id].get("unrealized_pnl"))
             for manifest in manifests
             if (manifest.end_time or manifest.start_time).date() == today
         )
         max_drawdown = max(
-            (_as_decimal(manifest.metrics_summary.get("max_drawdown")) for manifest in manifests),
+            (_as_decimal(metrics_by_run[manifest.run_id].get("max_drawdown")) for manifest in manifests),
             default=Decimal("0"),
         )
 
@@ -332,7 +335,7 @@ class OperatorQueryService:
         current_exposure = sum(_as_decimal(row.get("market_value")) for row in positions)
         if current_exposure == 0:
             current_exposure = max(
-                (_as_decimal(manifest.metrics_summary.get("exposure_peak")) for manifest in manifests),
+                (_as_decimal(metrics_by_run[manifest.run_id].get("exposure_peak")) for manifest in manifests),
                 default=Decimal("0"),
             )
 
@@ -351,6 +354,7 @@ class OperatorQueryService:
         filters = filters or OperatorFilters()
         rows: list[dict[str, Any]] = []
         for manifest in self._selected_manifests(filters):
+            metrics = self._metrics_for_manifest(manifest)
             timeline = self._load_artifact_rows(manifest, "pnl_timeline")
             if timeline:
                 for point in timeline:
@@ -372,25 +376,45 @@ class OperatorQueryService:
                             "equity": _as_decimal(point.get("equity")) or total_pnl,
                             "pnl": total_pnl,
                             "drawdown": _as_decimal(point.get("drawdown"))
-                            or _as_decimal(manifest.metrics_summary.get("max_drawdown")),
+                            or _as_decimal(metrics.get("max_drawdown")),
                             "exposure": _as_decimal(point.get("exposure"))
-                            or _as_decimal(manifest.metrics_summary.get("exposure_peak")),
+                            or _as_decimal(metrics.get("exposure_peak")),
                             "strategy": manifest.strategy_name,
                             "run_id": manifest.run_id,
                         }
                     )
                 continue
 
-            total_pnl = _as_decimal(manifest.metrics_summary.get("realized_pnl")) + _as_decimal(
-                manifest.metrics_summary.get("unrealized_pnl")
+            derived_timeline = ExperimentMetricsService().derive_pnl_timeline_from_fills(
+                self._load_artifact_rows(manifest, "fills"),
+                self._load_artifact_rows(manifest, "positions"),
+            )
+            if derived_timeline:
+                for point in derived_timeline:
+                    total_pnl = _as_decimal(point.get("total_pnl"))
+                    rows.append(
+                        {
+                            "ts": point.get("ts") or manifest.end_time or manifest.start_time,
+                            "equity": total_pnl,
+                            "pnl": total_pnl,
+                            "drawdown": _as_decimal(point.get("drawdown")),
+                            "exposure": _as_decimal(point.get("exposure")),
+                            "strategy": manifest.strategy_name,
+                            "run_id": manifest.run_id,
+                        }
+                    )
+                continue
+
+            total_pnl = _as_decimal(metrics.get("realized_pnl")) + _as_decimal(
+                metrics.get("unrealized_pnl")
             )
             rows.append(
                 {
                     "ts": manifest.end_time or manifest.start_time,
                     "equity": total_pnl,
                     "pnl": total_pnl,
-                    "drawdown": _as_decimal(manifest.metrics_summary.get("max_drawdown")),
-                    "exposure": _as_decimal(manifest.metrics_summary.get("exposure_peak")),
+                    "drawdown": _as_decimal(metrics.get("max_drawdown")),
+                    "exposure": _as_decimal(metrics.get("exposure_peak")),
                     "strategy": manifest.strategy_name,
                     "run_id": manifest.run_id,
                 }
@@ -496,6 +520,7 @@ class OperatorQueryService:
                         or reason_by_token.get(token_id)
                         or fill.get("reason_code")
                         or "",
+                        "token_id": token_id,
                         "run_id": manifest.run_id,
                     }
                 )
@@ -569,7 +594,7 @@ class OperatorQueryService:
         token_mappings = manifest.universe_snapshot.token_mappings or [{}]
         rows: list[dict[str, Any]] = []
         for mapping in token_mappings:
-            metrics = manifest.metrics_summary
+            metrics = self._metrics_for_manifest(manifest)
             rows.append(
                 {
                     "manifest": manifest,
@@ -719,7 +744,7 @@ class OperatorQueryService:
         return self.market_data_store.fetch_latest_state(limit=200)
 
     def _pnl_row(self, manifest: RunManifest) -> dict[str, Any]:
-        metrics = manifest.metrics_summary
+        metrics = self._metrics_for_manifest(manifest)
         return {
             **self._manifest_context(manifest),
             "realized_pnl": _as_decimal(metrics.get("realized_pnl")),
@@ -733,6 +758,32 @@ class OperatorQueryService:
             > 0
             else Decimal("0"),
         }
+
+    def _metrics_for_manifest(self, manifest: RunManifest) -> dict[str, Any]:
+        if manifest.run_id in self._metrics_cache:
+            return self._metrics_cache[manifest.run_id]
+        metrics = dict(manifest.metrics_summary)
+        pnl_timeline = self._load_artifact_rows(manifest, "pnl_timeline")
+        fills = self._load_artifact_rows(manifest, "fills")
+        if fills and (
+            not pnl_timeline
+            or (
+                _as_decimal(metrics.get("realized_pnl")) == 0
+                and _as_decimal(metrics.get("unrealized_pnl")) == 0
+                and _as_decimal(metrics.get("total_return")) == 0
+            )
+        ):
+            metrics = ExperimentMetricsService().compute_summary(
+                order_intents=self._load_artifact_rows(manifest, "order_intents"),
+                orders=self._load_artifact_rows(manifest, "orders"),
+                fills=fills,
+                positions=self._load_artifact_rows(manifest, "positions"),
+                pnl_timeline=pnl_timeline,
+                risk_decisions=self._load_artifact_rows(manifest, "risk_decisions"),
+                starting_equity=_as_decimal(manifest.resolved_config.risk.get("cash_available")),
+            )
+        self._metrics_cache[manifest.run_id] = metrics
+        return metrics
 
 
 def _matches_manifest_filters(

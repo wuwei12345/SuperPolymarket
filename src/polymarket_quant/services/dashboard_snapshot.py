@@ -8,6 +8,7 @@ from typing import Any
 
 from polymarket_quant.domain.automation import AutomationRun
 from polymarket_quant.domain.market_data import utc_now
+from polymarket_quant.services.market_display import MarketDisplayService
 from polymarket_quant.services.operator_queries import OperatorFilters, OperatorQueryService
 
 
@@ -17,9 +18,11 @@ class DashboardSnapshotService:
         query_service: OperatorQueryService,
         *,
         snapshot_path: str | Path = "data/runtime/latest_snapshot.json",
+        market_display_service: MarketDisplayService | None = None,
     ) -> None:
         self.query_service = query_service
         self.snapshot_path = Path(snapshot_path)
+        self.market_display_service = market_display_service
 
     def build_snapshot(
         self,
@@ -39,6 +42,12 @@ class DashboardSnapshotService:
             "curves": self.query_service.simulation_curves(filters),
             "current_positions": self.query_service.simulation_positions(filters),
             "recent_simulated_trades": self.query_service.simulation_trades(filters),
+            "market_cards": self.market_display_service.market_cards(filters)
+            if self.market_display_service is not None
+            else [],
+            "recent_simulated_trades_display": self.market_display_service.recent_trades(filters)
+            if self.market_display_service is not None
+            else [],
             "alert_summary": self.query_service.risk_alert_summary(filters),
         }
 

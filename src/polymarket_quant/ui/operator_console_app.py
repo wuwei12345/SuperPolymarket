@@ -13,6 +13,7 @@ except ModuleNotFoundError:  # pragma: no cover - Streamlit is installed in norm
     st = None  # type: ignore[assignment]
 
 from polymarket_quant.domain.operator import ConnectionState, GlobalMode
+from polymarket_quant.services.market_display import MarketDisplayService
 from polymarket_quant.services.operator_queries import OperatorFilters, OperatorQueryService
 from polymarket_quant.services.operator_safety import (
     ModePreflightResult,
@@ -23,8 +24,11 @@ from polymarket_quant.ui.contracts import (
     OPERATOR_CONSOLE_SEVERITIES,
     OPERATOR_CONSOLE_STATUS_FIELDS,
     SIMULATION_CURVE_COLUMNS,
+    SIMULATION_MARKET_CARD_COLUMNS,
+    SIMULATION_TRADE_DISPLAY_COLUMNS,
 )
 from polymarket_quant.ui.i18n import render_language_selector, t
+from polymarket_quant.storage.market_store import MarketStore
 
 
 DEFAULT_ARTIFACT_ROOT = Path(
@@ -32,6 +36,9 @@ DEFAULT_ARTIFACT_ROOT = Path(
 )
 DEFAULT_RUNTIME_SNAPSHOT = Path(
     os.environ.get("POLYMARKET_QUANT_RUNTIME_SNAPSHOT", "data/runtime/latest_snapshot.json")
+)
+DEFAULT_MARKET_STORE = Path(
+    os.environ.get("POLYMARKET_MARKET_STORE_PATH", "data/markets.sqlite3")
 )
 
 
@@ -187,6 +194,49 @@ def build_simulation_trades_dataframe(
     )
 
 
+def build_market_cards_dataframe(
+    rows: list[dict[str, Any]], language: str = "en"
+) -> pd.DataFrame:
+    columns = [
+        ("question", t(language, "operator.col_question")),
+        ("yes_probability_pct", t(language, "operator.col_yes_probability")),
+        ("no_probability_pct", t(language, "operator.col_no_probability")),
+        ("liquidity", t(language, "operator.col_liquidity")),
+        ("volume_24h", t(language, "operator.col_volume_24h")),
+        ("end_date", t(language, "operator.col_end_date")),
+        ("position_side", t(language, "operator.col_position_side")),
+        ("position_size", t(language, "operator.col_position_size")),
+        ("avg_entry", t(language, "operator.col_avg_entry")),
+        ("current_price", t(language, "operator.col_current_price")),
+        ("pnl", t(language, "operator.col_pnl")),
+        ("pnl_pct", t(language, "operator.col_pnl_pct")),
+        ("strategy_name", t(language, "operator.col_strategy")),
+        ("last_signal_reason", t(language, "operator.col_reason_code")),
+    ]
+    return pd.DataFrame(rows).reindex(columns=[source for source, _label in columns]).rename(
+        columns={source: label for source, label in columns}
+    )
+
+
+def build_trade_display_dataframe(
+    rows: list[dict[str, Any]], language: str = "en"
+) -> pd.DataFrame:
+    columns = [
+        ("time", t(language, "operator.col_time")),
+        ("strategy", t(language, "operator.col_strategy")),
+        ("action", t(language, "operator.col_action")),
+        ("market_question", t(language, "operator.col_market_question")),
+        ("side", t(language, "operator.col_side")),
+        ("price", t(language, "operator.col_price")),
+        ("size", t(language, "operator.col_size")),
+        ("notional", t(language, "operator.col_notional")),
+        ("reason_code", t(language, "operator.col_reason_code")),
+    ]
+    return pd.DataFrame(rows).reindex(columns=[source for source, _label in columns]).rename(
+        columns={source: label for source, label in columns}
+    )
+
+
 def main(query_service: OperatorQueryService | None = None) -> None:
     if st is None:
         raise RuntimeError("streamlit is required to run the operator console")
@@ -199,11 +249,20 @@ def main(query_service: OperatorQueryService | None = None) -> None:
     st.caption(t(language, "operator.caption"))
 
     query_service = query_service or OperatorQueryService(DEFAULT_ARTIFACT_ROOT)
+    market_display_service = MarketDisplayService(
+        market_store=MarketStore(DEFAULT_MARKET_STORE),
+        query_service=query_service,
+    )
     filters = render_shared_filters()
     page = render_page_navigation(language)
 
     if page == "dashboard":
-        render_simulation_dashboard(query_service, filters, language=language)
+        render_simulation_dashboard(
+            query_service,
+            filters,
+            market_display_service=market_display_service,
+            language=language,
+        )
     elif page == "run_details":
         render_run_details_page(query_service, filters, language=language)
     elif page == "system_health":
@@ -233,6 +292,7 @@ def render_simulation_dashboard(
     query_service: OperatorQueryService,
     filters: OperatorFilters,
     *,
+    market_display_service: MarketDisplayService | None = None,
     language: str = "en",
 ) -> None:
     if st is None:
@@ -259,6 +319,20 @@ def render_simulation_dashboard(
         if snapshot is not None
         else query_service.simulation_trades(filters)
     )
+    market_card_rows = (
+        snapshot.get("market_cards", [])
+        if snapshot is not None and snapshot.get("market_cards")
+        else market_display_service.market_cards(filters)
+        if market_display_service is not None
+        else []
+    )
+    trade_display_rows = (
+        snapshot.get("recent_simulated_trades_display", [])
+        if snapshot is not None and snapshot.get("recent_simulated_trades_display")
+        else market_display_service.recent_trades(filters)
+        if market_display_service is not None
+        else []
+    )
     alert_summary = (
         snapshot.get("alert_summary", {})
         if snapshot is not None
@@ -273,16 +347,19 @@ def render_simulation_dashboard(
 
     left, right = st.columns([3, 2])
     with left:
-        st.subheader(t(language, "operator.current_positions"))
-        positions = build_simulation_positions_dataframe(position_rows, language=language)
-        if positions.empty:
+        st.subheader(t(language, "operator.market_cards"))
+        market_cards = build_market_cards_dataframe(market_card_rows, language=language)
+        if market_cards.empty:
             st.caption(t(language, "operator.no_positions"))
-        st.dataframe(positions, use_container_width=True, hide_index=True)
+            market_cards = build_simulation_positions_dataframe(position_rows, language=language)
+        st.dataframe(market_cards, use_container_width=True, hide_index=True)
     with right:
         render_risk_summary(alert_summary, language=language)
 
     st.subheader(t(language, "operator.recent_trades"))
-    trades = build_simulation_trades_dataframe(trade_rows, language=language)
+    trades = build_trade_display_dataframe(trade_display_rows, language=language)
+    if trades.empty:
+        trades = build_simulation_trades_dataframe(trade_rows, language=language)
     if trades.empty:
         st.caption(t(language, "operator.no_trades"))
     st.dataframe(trades, use_container_width=True, hide_index=True)

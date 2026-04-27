@@ -33,7 +33,12 @@ class ExperimentMetricsService:
         pnl_rows = [_row_to_dict(row) for row in pnl_timeline]
         risk_rows = [_row_to_dict(row) for row in risk_decisions]
 
-        realized_pnl, unrealized_pnl, total_pnl = self._pnl_totals(pnl_rows)
+        derived_pnl_rows = (
+            pnl_rows
+            if pnl_rows
+            else self.derive_pnl_timeline_from_fills(fill_rows, position_rows)
+        )
+        realized_pnl, unrealized_pnl, total_pnl = self._pnl_totals(derived_pnl_rows)
         starting = _as_decimal(starting_equity)
         turnover = sum(
             _as_decimal(fill.get("price")) * _as_decimal(fill.get("size"))
@@ -55,7 +60,7 @@ class ExperimentMetricsService:
             Decimal(len(order_rows)),
         )
         average_holding_time = self._average_holding_time_seconds(fill_rows)
-        max_drawdown = self._max_drawdown(pnl_rows)
+        max_drawdown = self._max_drawdown(derived_pnl_rows)
         exposure_peak = self._exposure_peak(position_rows)
         reject_count = int(
             sum(
@@ -81,6 +86,89 @@ class ExperimentMetricsService:
             "slippage_average": slippage["average"],
             "slippage_bps": slippage["bps"],
         }
+
+    def derive_pnl_timeline_from_fills(
+        self,
+        fills: Sequence[Mapping[str, Any] | BaseModel],
+        positions: Sequence[Mapping[str, Any] | BaseModel] = (),
+    ) -> list[dict[str, Any]]:
+        fill_rows = sorted(
+            (_row_to_dict(row) for row in fills),
+            key=lambda row: _parse_timestamp(row.get("created_at"))
+            or _parse_timestamp(row.get("source_ts"))
+            or datetime.min,
+        )
+        if not fill_rows:
+            return []
+
+        open_lots: dict[str, deque[tuple[Decimal, Decimal]]] = defaultdict(deque)
+        last_price_by_token: dict[str, Decimal] = {}
+        realized_pnl = Decimal("0")
+        rows: list[dict[str, Any]] = []
+
+        for fill in fill_rows:
+            token_id = str(fill.get("token_id"))
+            side = str(fill.get("side"))
+            price = _as_decimal(fill.get("price"))
+            size = _as_decimal(fill.get("size"))
+            timestamp = _parse_timestamp(fill.get("created_at")) or _parse_timestamp(
+                fill.get("source_ts")
+            )
+            if not token_id or size <= 0:
+                continue
+            last_price_by_token[token_id] = price
+            if side == "BUY":
+                open_lots[token_id].append((size, price))
+            elif side == "SELL":
+                remaining = size
+                lots = open_lots[token_id]
+                while lots and remaining > 0:
+                    lot_size, lot_price = lots[0]
+                    matched = min(lot_size, remaining)
+                    realized_pnl += matched * (price - lot_price)
+                    remaining -= matched
+                    if matched == lot_size:
+                        lots.popleft()
+                    else:
+                        lots[0] = (lot_size - matched, lot_price)
+
+            unrealized_pnl, exposure = self._open_lot_unrealized_and_exposure(
+                open_lots,
+                last_price_by_token,
+                positions,
+            )
+            rows.append(
+                {
+                    "ts": timestamp,
+                    "realized_pnl": realized_pnl,
+                    "unrealized_pnl": unrealized_pnl,
+                    "total_pnl": realized_pnl + unrealized_pnl,
+                    "exposure": exposure,
+                }
+            )
+        return rows
+
+    def _open_lot_unrealized_and_exposure(
+        self,
+        open_lots: dict[str, deque[tuple[Decimal, Decimal]]],
+        last_price_by_token: dict[str, Decimal],
+        positions: Sequence[Mapping[str, Any] | BaseModel],
+    ) -> tuple[Decimal, Decimal]:
+        mark_by_token = {
+            str(row.get("token_id")): _as_decimal(
+                row.get("mark_price") or row.get("current_price")
+            )
+            for row in (_row_to_dict(position) for position in positions)
+            if row.get("token_id")
+        }
+        unrealized_pnl = Decimal("0")
+        exposure = Decimal("0")
+        for token_id, lots in open_lots.items():
+            mark_price = mark_by_token.get(token_id, last_price_by_token.get(token_id, Decimal("0")))
+            for lot_size, lot_price in lots:
+                unrealized_pnl += lot_size * (mark_price - lot_price)
+                exposure += abs(lot_size * mark_price)
+        return unrealized_pnl, exposure
 
     def _pnl_totals(self, pnl_rows: Sequence[dict[str, Any]]) -> tuple[Decimal, Decimal, Decimal]:
         if not pnl_rows:

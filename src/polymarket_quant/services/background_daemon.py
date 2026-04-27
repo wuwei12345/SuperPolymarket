@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import time
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -16,8 +17,11 @@ from polymarket_quant.services.automation_cli import AutomationCliService
 from polymarket_quant.services.automation_config import load_automation_config
 from polymarket_quant.services.automation_runner import AutomationRunResult
 from polymarket_quant.services.dashboard_snapshot import DashboardSnapshotService
+from polymarket_quant.services.market_display import MarketDisplayService
 from polymarket_quant.services.operator_queries import OperatorQueryService
 from polymarket_quant.services.runtime_state_store import RuntimeStateStore, RuntimeTaskState
+from polymarket_quant.storage.market_data_store import DATABASE_URL_ENV, MarketDataStore
+from polymarket_quant.storage.market_store import MarketStore
 
 
 TASK_ORDER = [
@@ -135,10 +139,18 @@ class BackgroundDaemonService:
         return AutomationCliService().run_resolved(resolved_config)
 
     def _write_snapshot(self, result: AutomationRunResult) -> None:
-        artifact_root = result.automation_run.resolved_config.artifact_root
+        resolved_config = result.automation_run.resolved_config
+        query_service = OperatorQueryService(resolved_config.artifact_root)
         DashboardSnapshotService(
-            OperatorQueryService(artifact_root),
+            query_service,
             snapshot_path=Path(self.config.runtime_root) / "latest_snapshot.json",
+            market_display_service=MarketDisplayService(
+                market_store=MarketStore(resolved_config.market_store_path),
+                query_service=query_service,
+                market_data_store=MarketDataStore()
+                if os.getenv(DATABASE_URL_ENV)
+                else None,
+            ),
         ).write_latest(automation_run=result.automation_run)
 
     def _due_tasks(self, current_time: datetime) -> list[AutomationTaskName]:

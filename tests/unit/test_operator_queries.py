@@ -442,6 +442,76 @@ def test_operator_queries_build_simulation_result_dashboard_data(tmp_path: Path)
     assert risk_summary["counts"]["Warning"] == 1
 
 
+def test_operator_queries_fall_back_to_fill_realized_pnl_when_manifest_metrics_are_zero(
+    tmp_path: Path,
+) -> None:
+    manifest_obj = manifest(
+        run_id="run-fill-pnl",
+        strategy_name="stress",
+        mode=RunMode.REALTIME_PAPER,
+        market_id="market-dashboard",
+        event_id="event-dashboard",
+        token_id="token-dashboard",
+        day_offset=0,
+        metrics_summary={
+            "realized_pnl": Decimal("0"),
+            "unrealized_pnl": Decimal("0"),
+            "turnover": Decimal("0"),
+            "max_drawdown": Decimal("0"),
+            "exposure_peak": Decimal("0"),
+            "total_return": Decimal("0"),
+        },
+    )
+    RunArtifactBundleWriter(tmp_path).write_bundle(
+        manifest_obj,
+        order_intents=[
+            {"client_order_id": "buy", "token_id": "token-dashboard", "price": "0.50", "size": "10"},
+            {"client_order_id": "sell", "token_id": "token-dashboard", "price": "0.55", "size": "10"},
+        ],
+        orders=[
+            {"client_order_id": "buy", "token_id": "token-dashboard", "status": "FILLED"},
+            {"client_order_id": "sell", "token_id": "token-dashboard", "status": "FILLED"},
+        ],
+        fills=[
+            {
+                "client_order_id": "buy",
+                "token_id": "token-dashboard",
+                "side": "BUY",
+                "price": "0.50",
+                "size": "10",
+                "created_at": instant(0),
+            },
+            {
+                "client_order_id": "sell",
+                "token_id": "token-dashboard",
+                "side": "SELL",
+                "price": "0.55",
+                "size": "10",
+                "created_at": instant(0) + timedelta(minutes=1),
+            },
+        ],
+        positions=[
+            {
+                "strategy_id": "stress",
+                "token_id": "token-dashboard",
+                "quantity": "0",
+                "mark_price": "0.55",
+            }
+        ],
+    )
+
+    service = OperatorQueryService(tmp_path)
+
+    summary = service.simulation_summary()
+    pnl = service.pnl_exposure()[0]
+    curves = service.simulation_curves()
+
+    assert summary["total_pnl"] == Decimal("0.50")
+    assert summary["realized_pnl"] == Decimal("0.50")
+    assert pnl["realized_pnl"] == Decimal("0.50")
+    assert curves[-1]["pnl"] == Decimal("0.50")
+
+
 def test_operator_queries_list_runs_and_artifacts_from_manifest_bundle(
     tmp_path: Path,
 ) -> None:

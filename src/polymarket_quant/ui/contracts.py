@@ -90,6 +90,33 @@ SIMULATION_TRADE_COLUMNS = [
     "amount",
     "reason_code",
 ]
+SIMULATION_MARKET_CARD_COLUMNS = [
+    "market question",
+    "YES probability",
+    "NO probability",
+    "liquidity",
+    "24h volume",
+    "end date",
+    "position side",
+    "position size",
+    "avg entry",
+    "current price",
+    "pnl",
+    "pnl %",
+    "strategy",
+    "reason_code",
+]
+SIMULATION_TRADE_DISPLAY_COLUMNS = [
+    "time",
+    "strategy",
+    "action",
+    "market question",
+    "side",
+    "price",
+    "size",
+    "notional",
+    "reason_code",
+]
 SIMULATION_CURVE_COLUMNS = [
     "ts",
     "equity",

@@ -11,16 +11,20 @@ from polymarket_quant.ui.contracts import (
     OPERATOR_CONSOLE_SEVERITIES,
     OPERATOR_CONSOLE_STATUS_FIELDS,
     SIMULATION_DASHBOARD_PAGES,
+    SIMULATION_MARKET_CARD_COLUMNS,
     SIMULATION_POSITION_COLUMNS,
     SIMULATION_TRADE_COLUMNS,
+    SIMULATION_TRADE_DISPLAY_COLUMNS,
 )
 from polymarket_quant.ui.i18n import t
 from polymarket_quant.ui.operator_console_app import (
     build_overview_dataframe,
     build_pnl_exposure_dataframe,
     build_positions_orders_dataframe,
+    build_market_cards_dataframe,
     build_simulation_positions_dataframe,
     build_simulation_trades_dataframe,
+    build_trade_display_dataframe,
     build_timeline_dataframe,
 )
 
@@ -149,6 +153,47 @@ def test_simulation_dashboard_dataframe_helpers_keep_user_result_columns() -> No
     assert list(trades.columns) == SIMULATION_TRADE_COLUMNS
 
 
+def test_market_card_dataframe_helpers_keep_user_facing_columns() -> None:
+    cards = build_market_cards_dataframe(
+        [
+            {
+                "question": "Will it rain?",
+                "yes_probability_pct": "55",
+                "no_probability_pct": "45",
+                "liquidity": "1000",
+                "volume_24h": "250",
+                "end_date": "2026-04-30T00:00:00Z",
+                "position_side": "YES",
+                "position_size": "4",
+                "avg_entry": "0.50",
+                "current_price": "0.55",
+                "pnl": "0.2",
+                "pnl_pct": "10",
+                "strategy_name": "stress",
+                "last_signal_reason": "bootstrap_enter",
+            }
+        ]
+    )
+    trades = build_trade_display_dataframe(
+        [
+            {
+                "time": "2026-04-22T08:00:00Z",
+                "strategy": "stress",
+                "action": "enter",
+                "market_question": "Will it rain?",
+                "side": "YES",
+                "price": "0.50",
+                "size": "4",
+                "notional": "2",
+                "reason_code": "bootstrap_enter",
+            }
+        ]
+    )
+
+    assert list(cards.columns) == SIMULATION_MARKET_CARD_COLUMNS
+    assert list(trades.columns) == SIMULATION_TRADE_DISPLAY_COLUMNS
+
+
 def test_operator_console_can_render_chinese_labels() -> None:
     overview = build_overview_dataframe(
         [
@@ -186,6 +231,10 @@ def test_operator_console_can_render_chinese_labels() -> None:
     assert t("zh", "operator.col_realized_pnl") in pnl.columns
     assert t("zh", "operator.col_market") in build_simulation_positions_dataframe(
         [{"market": "市场", "direction": "long"}],
+        language="zh",
+    ).columns
+    assert t("zh", "operator.col_yes_probability") in build_market_cards_dataframe(
+        [{"question": "市场", "yes_probability_pct": "55"}],
         language="zh",
     ).columns
     assert list(timeline.columns) == [

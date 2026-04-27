@@ -233,6 +233,43 @@ def test_metrics_service_computes_required_run_summary_fields() -> None:
     assert metrics["reject_count"] == 1
 
 
+def test_metrics_service_derives_realized_pnl_from_fills_without_timeline() -> None:
+    metrics = ExperimentMetricsService().compute_summary(
+        fills=[
+            {
+                "client_order_id": "o1",
+                "token_id": "token-yes",
+                "side": "BUY",
+                "price": Decimal("0.50"),
+                "size": Decimal("10"),
+                "created_at": instant(),
+            },
+            {
+                "client_order_id": "o2",
+                "token_id": "token-yes",
+                "side": "SELL",
+                "price": Decimal("0.55"),
+                "size": Decimal("4"),
+                "created_at": instant() + timedelta(minutes=1),
+            },
+            {
+                "client_order_id": "o3",
+                "token_id": "token-yes",
+                "side": "SELL",
+                "price": Decimal("0.45"),
+                "size": Decimal("6"),
+                "created_at": instant() + timedelta(minutes=2),
+            },
+        ],
+        positions=[{"token_id": "token-yes", "quantity": "0", "mark_price": "0.45"}],
+        starting_equity=Decimal("100"),
+    )
+
+    assert metrics["realized_pnl"] == Decimal("-0.10")
+    assert metrics["unrealized_pnl"] == Decimal("0.00")
+    assert metrics["total_return"] == Decimal("-0.001")
+
+
 def test_cli_resolves_yaml_config_and_writes_manifest(tmp_path: Path) -> None:
     config_path = tmp_path / "phase4.yaml"
     write_yaml_config(config_path, mode="replay")

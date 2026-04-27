@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from datetime import datetime, timedelta
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from pathlib import Path
@@ -17,11 +18,13 @@ from polymarket_quant.services.automation_tasks import load_object
 from polymarket_quant.services.dashboard_snapshot import DashboardSnapshotService
 from polymarket_quant.services.fill_engine import FillEngineConfig
 from polymarket_quant.services.market_sync import MarketSyncService
+from polymarket_quant.services.market_display import MarketDisplayService
 from polymarket_quant.services.operator_queries import OperatorQueryService
 from polymarket_quant.services.operator_runtime_registry import OperatorRuntimeRegistry
 from polymarket_quant.services.paper_exchange import PaperExchangeService
 from polymarket_quant.services.strategy_cli import StrategyCliService
 from polymarket_quant.storage.market_store import MarketStore
+from polymarket_quant.storage.market_data_store import DATABASE_URL_ENV, MarketDataStore
 from polymarket_quant.strategy.base import BaseStrategy
 from polymarket_quant.strategy.scheduled import PROFILE_CONFIGS, StressProfile
 
@@ -82,9 +85,17 @@ class AutomationCliService:
         result: AutomationRunResult,
     ) -> None:
         runtime_root = Path(str(resolved_config.metadata.get("runtime_root", "data/runtime")))
+        query_service = OperatorQueryService(resolved_config.artifact_root)
         DashboardSnapshotService(
-            OperatorQueryService(resolved_config.artifact_root),
+            query_service,
             snapshot_path=runtime_root / "latest_snapshot.json",
+            market_display_service=MarketDisplayService(
+                market_store=MarketStore(resolved_config.market_store_path),
+                query_service=query_service,
+                market_data_store=MarketDataStore()
+                if os.getenv(DATABASE_URL_ENV)
+                else None,
+            ),
         ).write_latest(automation_run=result.automation_run)
 
     def _execute_strategy(
