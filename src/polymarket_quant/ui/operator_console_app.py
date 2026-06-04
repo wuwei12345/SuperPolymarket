@@ -473,10 +473,23 @@ def render_risk_summary(alert_summary: dict[str, Any], *, language: str = "en") 
     st.subheader(t(language, "operator.risk_summary"))
     st.caption(t(language, "operator.severity_ladder"))
     counts = alert_summary.get("counts", {})
-    columns = st.columns(3)
-    for column, severity in zip(columns, ["Critical", "Warning", "Info"]):
+    visible_severities = alert_summary.get("visible_severities") or [
+        "Critical",
+        "Warning",
+    ]
+    columns = st.columns(len(visible_severities))
+    for column, severity in zip(columns, visible_severities):
         with column:
             st.metric(severity, counts.get(severity, 0))
+    suppressed_info_count = int(alert_summary.get("suppressed_info_count") or 0)
+    if suppressed_info_count:
+        st.caption(
+            t(
+                language,
+                "operator.info_hidden",
+                count=suppressed_info_count,
+            )
+        )
     latest = build_timeline_dataframe(alert_summary.get("latest", []), language=language)
     st.dataframe(latest, use_container_width=True, hide_index=True)
 

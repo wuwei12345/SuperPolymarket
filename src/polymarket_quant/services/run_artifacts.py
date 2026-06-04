@@ -43,6 +43,7 @@ class RunArtifactBundleWriter:
     ) -> RunManifest:
         run_dir = self.base_dir / manifest.run_id
         run_dir.mkdir(parents=True, exist_ok=True)
+        self._clear_stale_artifacts(run_dir)
 
         artifact_files = dict(manifest.artifact_files)
         for artifact_name, rows in {
@@ -74,6 +75,19 @@ class RunArtifactBundleWriter:
             json.dumps(updated_manifest.model_dump(mode="json"), indent=2, sort_keys=True)
         )
         return updated_manifest
+
+    @staticmethod
+    def _clear_stale_artifacts(run_dir: Path) -> None:
+        stale_names = {
+            "manifest.json",
+            "strategy.log",
+            "framework.log",
+            *ARTIFACT_FILE_NAMES.values(),
+        }
+        for file_name in stale_names:
+            path = run_dir / file_name
+            if path.exists() and path.is_file():
+                path.unlink()
 
     @staticmethod
     def _write_parquet(

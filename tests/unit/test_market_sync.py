@@ -29,13 +29,49 @@ def test_gamma_client_fetches_active_open_markets() -> None:
 
     client = GammaClient(client=httpx.Client(transport=httpx.MockTransport(handler)))
 
-    markets = client.fetch_markets(limit=25)
+    markets = client.fetch_markets(limit=25, include_short_term=False)
 
     assert markets == [{"id": "gamma-1"}]
     assert requests[0].url == httpx.URL(
-        f"{GAMMA_BASE_URL}/markets?active=true&closed=false&limit=25"
+        f"{GAMMA_BASE_URL}/markets?active=true&closed=false&limit=25&offset=0"
     )
     assert requests[0].headers["user-agent"] == USER_AGENT
+
+
+def test_gamma_client_fetches_short_term_end_date_page() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if "order=endDate" in str(request.url):
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": "gamma-soon",
+                        "conditionId": "condition-soon",
+                        "endDate": "2026-05-06T12:00:00Z",
+                    }
+                ],
+            )
+        return httpx.Response(
+            200,
+            json=[{"id": "gamma-default", "conditionId": "condition-default"}],
+        )
+
+    client = GammaClient(client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    markets = client.fetch_markets(
+        limit=25,
+        max_pages=1,
+        include_short_term=True,
+        short_term_pages=1,
+    )
+
+    assert [market["id"] for market in markets] == ["gamma-default", "gamma-soon"]
+    assert "order=endDate" in str(requests[1].url)
+    assert "ascending=true" in str(requests[1].url)
+    assert "end_date_min=" in str(requests[1].url)
 
 
 def test_clob_client_follows_next_cursor() -> None:
@@ -74,7 +110,7 @@ def gamma_market(**overrides: object) -> dict[str, object]:
         "question": "Will normalization pass?",
         "category": "Testing",
         "liquidity": "1500.5",
-        "endDate": "2026-06-01T00:00:00Z",
+        "endDate": "2099-06-01T00:00:00Z",
         "conditionId": "0x" + "a" * 64,
         "active": True,
         "closed": False,
@@ -122,6 +158,23 @@ def test_normalize_keeps_only_active_accepting_markets() -> None:
 
     assert [market.condition_id for market in markets] == [valid_condition]
     assert len(skipped) == 2
+
+
+def test_normalize_skips_markets_with_expired_end_date() -> None:
+    expired_condition = "0x" + "d" * 64
+
+    markets, skipped = normalize_markets(
+        [
+            gamma_market(
+                conditionId=expired_condition,
+                endDate="2025-01-01T00:00:00Z",
+            )
+        ],
+        [clob_market(condition_id=expired_condition)],
+    )
+
+    assert markets == []
+    assert skipped == [f"{expired_condition}: market end_date is already expired"]
 
 
 def test_normalize_source_map_marks_gamma_and_clob_fields() -> None:

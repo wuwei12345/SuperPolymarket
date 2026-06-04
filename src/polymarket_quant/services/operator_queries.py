@@ -486,10 +486,16 @@ class OperatorQueryService:
                 for intent in self._load_artifact_rows(manifest, "order_intents")
                 if intent.get("client_order_id")
             }
-            reason_by_token: dict[str, Any] = {}
+            reasons_by_token: dict[str, list[tuple[datetime, Any]]] = {}
             for signal in self._load_artifact_rows(manifest, "signals"):
-                if signal.get("token_id"):
-                    reason_by_token[str(signal.get("token_id"))] = signal.get("reason_code")
+                token_id = str(signal.get("token_id") or "")
+                signal_ts = _parse_timestamp(signal.get("ts"))
+                if token_id and signal_ts is not None:
+                    reasons_by_token.setdefault(token_id, []).append(
+                        (signal_ts, signal.get("reason_code"))
+                    )
+            for signal_reasons in reasons_by_token.values():
+                signal_reasons.sort(key=lambda row: row[0])
             for fill in self._load_artifact_rows(manifest, "fills"):
                 token_id = str(fill.get("token_id") or "")
                 if filters.token and token_id != filters.token:
@@ -499,16 +505,19 @@ class OperatorQueryService:
                 price = _as_decimal(fill.get("price"))
                 quantity = abs(_as_decimal(fill.get("size") or fill.get("quantity")))
                 client_order_id = str(fill.get("client_order_id") or "")
+                fill_time = (
+                    _parse_timestamp(
+                        fill.get("created_at")
+                        or fill.get("filled_at")
+                        or fill.get("ts")
+                        or fill.get("timestamp")
+                    )
+                    or manifest.end_time
+                    or manifest.start_time
+                )
                 rows.append(
                     {
-                        "time": _parse_timestamp(
-                            fill.get("created_at")
-                            or fill.get("filled_at")
-                            or fill.get("ts")
-                            or fill.get("timestamp")
-                        )
-                        or manifest.end_time
-                        or manifest.start_time,
+                        "time": fill_time,
                         "strategy": manifest.strategy_name,
                         "action": side.lower() if side else "fill",
                         "market": _market_label(mapping, token_id),
@@ -517,7 +526,7 @@ class OperatorQueryService:
                         "quantity": quantity,
                         "amount": price * quantity,
                         "reason_code": reason_by_order.get(client_order_id)
-                        or reason_by_token.get(token_id)
+                        or _reason_for_fill(reasons_by_token.get(token_id, []), fill_time)
                         or fill.get("reason_code")
                         or "",
                         "token_id": token_id,
@@ -527,16 +536,44 @@ class OperatorQueryService:
         return sorted(rows, key=lambda row: row["time"] or datetime.min, reverse=True)[:limit]
 
     def risk_alert_summary(self, filters: OperatorFilters | None = None) -> dict[str, Any]:
+        filters = filters or OperatorFilters()
         timeline = self.alerts_timeline(filters)
         counts = {"Critical": 0, "Warning": 0, "Info": 0}
         for row in timeline:
             severity = str(row.get("severity"))
             if severity in counts:
                 counts[severity] += 1
+        visible_severities = (
+            ["Info"] if filters.severity == "Info" else ["Critical", "Warning"]
+        )
+        visible_severity_set = set(visible_severities)
+        latest = [
+            row
+            for row in timeline
+            if str(row.get("severity")) in visible_severity_set
+        ]
         return {
             "counts": counts,
-            "latest": timeline[:5],
+            "latest": latest[:5],
+            "visible_severities": visible_severities,
+            "suppressed_info_count": 0
+            if filters.severity == "Info"
+            else counts["Info"],
         }
+
+    def latest_strategy_run_id(self, filters: OperatorFilters | None = None) -> str | None:
+        filters = filters or OperatorFilters()
+        manifests = self._selected_manifests(filters)
+        if not manifests:
+            return None
+        latest_manifest = max(
+            manifests,
+            key=lambda manifest: (
+                _manifest_timestamp(manifest),
+                manifest.run_id,
+            ),
+        )
+        return latest_manifest.run_id
 
     def _run_contexts(self, filters: OperatorFilters) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
@@ -875,6 +912,10 @@ def _time_window_label(manifest: RunManifest) -> str:
     return f"{start.isoformat()} -> {end.isoformat()}"
 
 
+def _manifest_timestamp(manifest: RunManifest) -> float:
+    return (manifest.end_time or manifest.start_time).timestamp()
+
+
 def _as_decimal(value: Any) -> Decimal:
     if isinstance(value, Decimal):
         return value
@@ -955,6 +996,22 @@ def _severity_for_risk_decision(decision: dict[str, Any]) -> str:
     if value == "WARN":
         return "Warning"
     return "Info"
+
+
+def _reason_for_fill(
+    signal_reasons: list[tuple[datetime, Any]],
+    fill_time: datetime | None,
+) -> Any:
+    if not signal_reasons:
+        return None
+    if fill_time is None:
+        return signal_reasons[-1][1]
+    reason = None
+    for signal_ts, signal_reason in signal_reasons:
+        if signal_ts > fill_time:
+            break
+        reason = signal_reason
+    return reason if reason is not None else signal_reasons[0][1]
 
 
 def _parse_timestamp(value: Any) -> datetime | None:

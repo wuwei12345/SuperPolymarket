@@ -155,6 +155,27 @@ def test_manifest_persists_resolved_config_and_data_scope(tmp_path: Path) -> Non
     assert saved_manifest["artifact_files"]["fills"] == "fills.parquet"
 
 
+def test_writer_removes_stale_artifacts_when_later_run_has_no_rows(tmp_path: Path) -> None:
+    writer = RunArtifactBundleWriter(tmp_path)
+
+    writer.write_bundle(
+        manifest(),
+        fills=[{"fill_id": "fill-1", "price": "0.45"}],
+        strategy_log="done\n",
+        framework_log="done\n",
+    )
+    assert (tmp_path / "run-001" / "fills.parquet").exists()
+
+    updated_manifest = writer.write_bundle(
+        manifest(),
+        strategy_log="done\n",
+        framework_log="done\n",
+    )
+
+    assert not (tmp_path / "run-001" / "fills.parquet").exists()
+    assert "fills" not in updated_manifest.artifact_files
+
+
 def test_writer_sanitizes_empty_struct_fields_for_parquet(tmp_path: Path) -> None:
     writer = RunArtifactBundleWriter(tmp_path)
 

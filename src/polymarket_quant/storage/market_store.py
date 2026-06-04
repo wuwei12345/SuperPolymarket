@@ -107,8 +107,12 @@ class MarketStore:
         restricted: bool | None = None,
     ) -> list[CanonicalMarket]:
         self.init_schema()
-        clauses = ["active = 1", "accepting_orders = 1"]
-        params: dict[str, object] = {}
+        clauses = [
+            "active = 1",
+            "accepting_orders = 1",
+            "(end_date IS NULL OR end_date > :now)",
+        ]
+        params: dict[str, object] = {"now": _now_iso()}
 
         if category:
             clauses.append("category = :category")
@@ -181,3 +185,9 @@ class MarketStore:
             raw_gamma=None if row["raw_gamma"] is None else json.loads(row["raw_gamma"]),
             raw_clob=None if row["raw_clob"] is None else json.loads(row["raw_clob"]),
         )
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace(
+        "+00:00", "Z"
+    )

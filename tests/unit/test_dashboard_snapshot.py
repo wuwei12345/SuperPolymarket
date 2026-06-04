@@ -27,7 +27,7 @@ def test_dashboard_snapshot_writes_result_focused_latest_json(tmp_path: Path) ->
                 question="Will it rain tomorrow?",
                 category="Weather",
                 liquidity=1000.0,
-                end_date=instant(),
+                end_date=datetime(2099, 4, 25, 8, 0, tzinfo=timezone.utc),
                 condition_id="condition-1",
                 yes_token_id="token-yes",
                 no_token_id="token-no",
@@ -106,6 +106,8 @@ def test_dashboard_snapshot_writes_result_focused_latest_json(tmp_path: Path) ->
     assert snapshot_path.exists()
     assert loaded is not None
     assert loaded["schema_version"] == 1
+    assert loaded["recent_run_id"] == "run-snapshot"
+    assert loaded["latest_strategy_run_id"] == "run-snapshot"
     assert loaded["summary_cards"]["total_pnl"] == "6"
     assert loaded["curves"][0]["equity"] == "1006"
     assert loaded["current_positions"][0]["market"] == "market-1"

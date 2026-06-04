@@ -440,6 +440,55 @@ def test_operator_queries_build_simulation_result_dashboard_data(tmp_path: Path)
     assert trades[0]["amount"] == Decimal("5.00")
     assert trades[0]["reason_code"] == "bootstrap_enter"
     assert risk_summary["counts"]["Warning"] == 1
+    assert risk_summary["visible_severities"] == ["Critical", "Warning"]
+    assert service.latest_strategy_run_id() == "run-dashboard"
+
+
+def test_risk_alert_summary_hides_info_timeline_by_default(tmp_path: Path) -> None:
+    write_run_bundle(
+        tmp_path,
+        manifest_obj=manifest(
+            run_id="run-warning",
+            strategy_name="stress",
+            mode=RunMode.REALTIME_PAPER,
+            market_id="market-dashboard",
+            event_id="event-dashboard",
+            token_id="token-dashboard",
+            day_offset=0,
+            metrics_summary={
+                "realized_pnl": Decimal("0"),
+                "unrealized_pnl": Decimal("0"),
+                "turnover": Decimal("0"),
+                "max_drawdown": Decimal("0"),
+                "exposure_peak": Decimal("0"),
+            },
+        ),
+        position_quantity="0",
+        order_status="FILLED",
+        risk_decision="WARN",
+    )
+    service = OperatorQueryService(
+        tmp_path,
+        market_data_store=FakeMarketDataStore(
+            [
+                {
+                    "market_id": "market-dashboard",
+                    "token_id": "token-dashboard",
+                    "received_at": instant(0).isoformat(),
+                    "gap_fill": False,
+                }
+            ]
+        ),
+    )
+
+    default_summary = service.risk_alert_summary()
+    info_summary = service.risk_alert_summary(OperatorFilters(severity="Info"))
+
+    assert default_summary["counts"]["Info"] == 1
+    assert default_summary["suppressed_info_count"] == 1
+    assert all(row["severity"] != "Info" for row in default_summary["latest"])
+    assert info_summary["visible_severities"] == ["Info"]
+    assert info_summary["latest"][0]["severity"] == "Info"
 
 
 def test_operator_queries_fall_back_to_fill_realized_pnl_when_manifest_metrics_are_zero(
@@ -510,6 +559,69 @@ def test_operator_queries_fall_back_to_fill_realized_pnl_when_manifest_metrics_a
     assert summary["realized_pnl"] == Decimal("0.50")
     assert pnl["realized_pnl"] == Decimal("0.50")
     assert curves[-1]["pnl"] == Decimal("0.50")
+
+
+def test_simulation_trades_match_reason_code_by_fill_time_when_orders_have_no_reason(
+    tmp_path: Path,
+) -> None:
+    manifest_obj = manifest(
+        run_id="run-staged-reasons",
+        strategy_name="stress",
+        mode=RunMode.REALTIME_PAPER,
+        market_id="market-dashboard",
+        event_id="event-dashboard",
+        token_id="token-dashboard",
+        day_offset=0,
+        metrics_summary={},
+    )
+    RunArtifactBundleWriter(tmp_path).write_bundle(
+        manifest_obj,
+        signals=[
+            {
+                "token_id": "token-dashboard",
+                "reason_code": "bootstrap_enter",
+                "ts": instant(0),
+            },
+            {
+                "token_id": "token-dashboard",
+                "reason_code": "bootstrap_exit",
+                "ts": instant(0) + timedelta(minutes=1),
+            },
+        ],
+        order_intents=[
+            {"client_order_id": "buy", "token_id": "token-dashboard"},
+            {"client_order_id": "sell", "token_id": "token-dashboard"},
+        ],
+        orders=[
+            {"client_order_id": "buy", "token_id": "token-dashboard", "status": "FILLED"},
+            {"client_order_id": "sell", "token_id": "token-dashboard", "status": "FILLED"},
+        ],
+        fills=[
+            {
+                "client_order_id": "buy",
+                "token_id": "token-dashboard",
+                "side": "BUY",
+                "price": "0.50",
+                "size": "10",
+                "created_at": instant(0),
+            },
+            {
+                "client_order_id": "sell",
+                "token_id": "token-dashboard",
+                "side": "SELL",
+                "price": "0.55",
+                "size": "10",
+                "created_at": instant(0) + timedelta(minutes=1),
+            },
+        ],
+    )
+
+    trades = OperatorQueryService(tmp_path).simulation_trades()
+
+    assert [trade["reason_code"] for trade in reversed(trades)] == [
+        "bootstrap_enter",
+        "bootstrap_exit",
+    ]
 
 
 def test_operator_queries_list_runs_and_artifacts_from_manifest_bundle(

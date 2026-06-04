@@ -241,6 +241,9 @@ def normalize_markets(
         if not market.is_phase1_valid():
             skipped.append(f"{condition_id}: not active + accepting orders with IDs")
             continue
+        if _is_expired(market.end_date):
+            skipped.append(f"{condition_id}: market end_date is already expired")
+            continue
         normalized.append(market)
 
     return normalized, skipped
@@ -248,6 +251,17 @@ def normalize_markets(
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _is_expired(end_date: datetime | None) -> bool:
+    if end_date is None:
+        return False
+    comparable = (
+        end_date
+        if end_date.tzinfo is not None
+        else end_date.replace(tzinfo=timezone.utc)
+    )
+    return comparable <= utc_now()
 
 
 def _event(step: str, source: str, status: str, message: str) -> SyncEvent:

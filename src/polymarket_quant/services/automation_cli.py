@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from polymarket_quant.adapters.polymarket import ClobClient, GammaClient
 from polymarket_quant.domain.automation import AutomationResolvedConfig, AutomationStrategyDefinition
@@ -121,6 +122,10 @@ class AutomationCliService:
             market_store=MarketStore(market_store_path),
             clob_client=ClobClient(),
         )
+        prepared_config = assign_unique_strategy_run_id(
+            prepared_config,
+            strategy_name=strategy_definition.name,
+        )
         events = build_bootstrap_market_events(
             prepared_config,
             clob_client=ClobClient(),
@@ -151,24 +156,45 @@ def prepare_strategy_raw_config(
         prepared["universe"] = universe
         return prepared
 
-    selected_candidate = _select_default_market(market_store, clob_client=clob_client)
-    if selected_candidate is None:
+    selected_candidates = _select_default_markets(
+        market_store,
+        clob_client=clob_client,
+        universe_config=universe,
+    )
+    if not selected_candidates:
         prepared["universe"] = universe
         return prepared
-    selected_market, selected_token_id = selected_candidate
 
     universe.setdefault("dataset_id", "automation-market-store")
-    universe["token_ids"] = [selected_token_id]
+    universe["token_ids"] = [token_id for _market, token_id in selected_candidates]
     universe["token_mappings"] = [
         {
-            "market_id": selected_market.market_id,
-            "condition_id": selected_market.condition_id,
-            "token_id": selected_token_id,
-            "question": selected_market.question,
-            "category": selected_market.category,
+            "market_id": market.market_id,
+            "condition_id": market.condition_id,
+            "token_id": token_id,
+            "question": market.question,
+            "category": market.category,
+            "end_date": market.end_date.isoformat() if market.end_date else None,
+            "liquidity": market.liquidity,
         }
+        for market, token_id in selected_candidates
     ]
     prepared["universe"] = universe
+    return prepared
+
+
+def assign_unique_strategy_run_id(
+    raw_config: dict[str, Any],
+    *,
+    strategy_name: str,
+    now: datetime | None = None,
+    suffix: str | None = None,
+) -> dict[str, Any]:
+    prepared = dict(raw_config)
+    base_run_id = str(prepared.get("run_id") or strategy_name or "strategy-run").strip()
+    timestamp = (now or utc_now()).strftime("%Y%m%dT%H%M%SZ")
+    unique_suffix = suffix or uuid4().hex[:8]
+    prepared["run_id"] = f"{_slug_run_id(base_run_id)}-{timestamp}-{unique_suffix}"
     return prepared
 
 
@@ -242,20 +268,20 @@ def _market_payload_from_book(
             "min_order_size": Decimal("1"),
             "active": True,
             "accepting_orders": True,
+            "book_source": "synthetic_fallback",
         }
 
-    bids = [
-        Decimal(str(row["price"]))
-        for row in book.get("bids", [])
-        if isinstance(row, dict) and "price" in row
-    ]
-    asks = [
-        Decimal(str(row["price"]))
-        for row in book.get("asks", [])
-        if isinstance(row, dict) and "price" in row
-    ]
-    best_bid = max(bids) if bids else None
-    best_ask = min(asks) if asks else None
+    book_levels = _book_levels_from_book(book)
+    best_bid = (
+        max((level["price"] for level in book_levels["bids"]), default=None)
+        if book_levels["bids"]
+        else None
+    )
+    best_ask = (
+        min((level["price"] for level in book_levels["asks"]), default=None)
+        if book_levels["asks"]
+        else None
+    )
     midpoint = (
         (best_bid + best_ask) / Decimal("2")
         if best_bid is not None and best_ask is not None
@@ -273,6 +299,8 @@ def _market_payload_from_book(
         "min_order_size": _optional_decimal(book.get("min_order_size")) or Decimal("1"),
         "active": True,
         "accepting_orders": True,
+        "book_source": "clob" if book_levels["bids"] and book_levels["asks"] else "clob_incomplete",
+        "book_levels": book_levels,
     }
 
 
@@ -282,23 +310,137 @@ def _optional_decimal(value: Any) -> Decimal | None:
     return Decimal(str(value))
 
 
-def _select_default_market(
+def _book_levels_from_book(book: dict[str, Any]) -> dict[str, list[dict[str, Decimal | str]]]:
+    return {
+        "bids": sorted(
+            _book_side_levels(book.get("bids"), side="BUY"),
+            key=lambda level: Decimal(str(level["price"])),
+            reverse=True,
+        ),
+        "asks": sorted(
+            _book_side_levels(book.get("asks"), side="SELL"),
+            key=lambda level: Decimal(str(level["price"])),
+        ),
+    }
+
+
+def _book_side_levels(
+    rows: Any,
+    *,
+    side: str,
+) -> list[dict[str, Decimal | str]]:
+    if not isinstance(rows, list):
+        return []
+    levels: list[dict[str, Decimal | str]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        price = _optional_decimal(row.get("price"))
+        size = _optional_decimal(row.get("size"))
+        if price is None or size is None or size <= 0:
+            continue
+        levels.append({"side": side, "price": price, "size": size})
+    return levels
+
+
+def _select_default_markets(
     market_store: MarketStore,
     *,
     clob_client: ClobClient | None = None,
-):
+    universe_config: dict[str, Any] | None = None,
+) -> list[tuple[Any, str]]:
+    universe_config = dict(universe_config or {})
     markets = market_store.list_markets()
     if not markets:
-        return None
+        return []
+    max_tokens = max(1, int(universe_config.get("max_tokens", 1)))
+    if str(universe_config.get("selection_mode", "")).lower() == "near_expiry":
+        return _select_near_expiry_markets(
+            markets,
+            clob_client=clob_client,
+            max_tokens=max_tokens,
+            universe_config=universe_config,
+        )
     if clob_client is None:
-        return markets[0], str(markets[0].yes_token_id)
+        return [(markets[0], str(markets[0].yes_token_id))]
     candidate_markets = markets[:25]
+    ranked = _rank_market_tokens(candidate_markets, clob_client=clob_client)
+    return _dedupe_market_rows(ranked, max_tokens=max_tokens)
+
+
+def _select_near_expiry_markets(
+    markets: list[Any],
+    *,
+    clob_client: ClobClient | None,
+    max_tokens: int,
+    universe_config: dict[str, Any],
+) -> list[tuple[Any, str]]:
+    now = utc_now()
+    min_minutes = int(universe_config.get("min_minutes_to_expiry", 15))
+    max_hours = universe_config.get("max_hours_to_expiry")
+    candidate_limit = max(1, int(universe_config.get("candidate_limit", 75)))
+    min_book_score = int(universe_config.get("min_book_score", 3))
+    min_end_date = now + timedelta(minutes=min_minutes)
+    max_end_date = None if max_hours is None else now + timedelta(hours=int(max_hours))
+    candidates = [
+        market
+        for market in markets
+        if market.end_date is not None
+        and market.end_date >= min_end_date
+        and (max_end_date is None or market.end_date <= max_end_date)
+    ]
+    if not candidates:
+        candidates = [
+            market
+            for market in markets
+            if market.end_date is not None and market.end_date >= min_end_date
+        ]
+    candidates.sort(
+        key=lambda market: (
+            market.end_date,
+            -(market.liquidity or 0.0),
+            market.question,
+        )
+    )
+    candidates = candidates[:candidate_limit]
+    if clob_client is None:
+        return [
+            (market, str(market.yes_token_id))
+            for market in candidates[:max_tokens]
+            if market.yes_token_id
+        ]
+
+    ranked = _rank_market_tokens(candidates, clob_client=clob_client)
+    eligible = [
+        row
+        for row in ranked
+        if row[0] >= min_book_score
+    ]
+    rows = eligible or ranked
+    rows.sort(
+        key=lambda row: (
+            row[2].end_date,
+            -row[0],
+            -row[1],
+            row[2].question,
+        )
+    )
+    return _dedupe_market_rows(rows, max_tokens=max_tokens)
+
+
+def _rank_market_tokens(
+    candidate_markets: list[Any],
+    *,
+    clob_client: ClobClient,
+) -> list[tuple[int, float, Any, str]]:
     token_ids = [
         token_id
         for market in candidate_markets
         for token_id in (market.yes_token_id, market.no_token_id)
         if token_id
     ]
+    if not token_ids:
+        return []
     try:
         books = clob_client.fetch_order_books(token_ids)
     except Exception:
@@ -313,8 +455,25 @@ def _select_default_market(
             score = _score_bootstrap_market(book)
             ranked_candidates.append((score, market.liquidity or 0.0, market, str(token_id)))
     ranked_candidates.sort(key=lambda row: (row[0], row[1]), reverse=True)
-    best = ranked_candidates[0]
-    return best[2], best[3]
+    return ranked_candidates
+
+
+def _dedupe_market_rows(
+    rows: list[tuple[int, float, Any, str]],
+    *,
+    max_tokens: int,
+) -> list[tuple[Any, str]]:
+    selected: list[tuple[Any, str]] = []
+    seen_markets: set[str] = set()
+    for _score, _liquidity, market, token_id in rows:
+        market_key = str(market.condition_id or market.market_id or token_id)
+        if market_key in seen_markets:
+            continue
+        selected.append((market, token_id))
+        seen_markets.add(market_key)
+        if len(selected) >= max_tokens:
+            break
+    return selected
 
 
 def _bootstrap_stage_offsets(raw_config: dict[str, Any]) -> list[int]:
@@ -341,16 +500,51 @@ def _stage_market_payload(
     payload = dict(base_payload)
     tick_size = _optional_decimal(payload.get("tick_size")) or Decimal("0.01")
     midpoint = _optional_decimal(payload.get("midpoint")) or Decimal("0.50")
+    real_best_bid = _optional_decimal(payload.get("best_bid"))
+    real_best_ask = _optional_decimal(payload.get("best_ask"))
+    real_book_levels = payload.get("book_levels")
     deltas = [
         Decimal("0"),
-        tick_size * Decimal("2"),
+        tick_size,
         tick_size * Decimal("-1"),
-        tick_size * Decimal("-3"),
+        tick_size * Decimal("-2"),
         tick_size * Decimal("1"),
     ]
     delta = deltas[min(stage_index, len(deltas) - 1)]
+    if (
+        payload.get("book_source") == "clob"
+        and isinstance(real_book_levels, dict)
+        and real_best_bid is not None
+        and real_best_ask is not None
+    ):
+        staged_last_trade = max(
+            Decimal("0.01"),
+            min(Decimal("0.99"), midpoint + delta),
+        )
+        payload.update(
+            {
+                "best_bid": real_best_bid,
+                "best_ask": real_best_ask,
+                "midpoint": (real_best_bid + real_best_ask) / Decimal("2"),
+                "last_trade_price": staged_last_trade,
+                "bootstrap_stage": stage_index,
+                "book_source": "clob_augmented",
+                "book_levels": _stage_real_book_levels(
+                    real_book_levels,
+                    stage_index=stage_index,
+                    best_bid=real_best_bid,
+                    best_ask=real_best_ask,
+                ),
+            }
+        )
+        return payload
+
     staged_midpoint = max(Decimal("0.01"), min(Decimal("0.99"), midpoint + delta))
-    half_spread = max(tick_size, (_optional_decimal(payload.get("best_ask")) or staged_midpoint) - (_optional_decimal(payload.get("best_bid")) or staged_midpoint))
+    half_spread = max(
+        tick_size,
+        (_optional_decimal(payload.get("best_ask")) or staged_midpoint)
+        - (_optional_decimal(payload.get("best_bid")) or staged_midpoint),
+    )
     if half_spread <= 0:
         half_spread = tick_size * Decimal("2")
     best_bid = _align_price(
@@ -376,6 +570,7 @@ def _stage_market_payload(
             "midpoint": (best_bid + best_ask) / Decimal("2"),
             "last_trade_price": staged_midpoint,
             "bootstrap_stage": stage_index,
+            "book_source": "synthetic_staged",
             "book_levels": _stage_book_levels(
                 stage_index=stage_index,
                 best_bid=best_bid,
@@ -428,32 +623,99 @@ def _stage_book_levels(
     best_ask: Decimal,
     tick_size: Decimal,
 ) -> dict[str, list[dict[str, Decimal | str]]]:
-    size_by_stage = [
-        Decimal("250"),
-        Decimal("250"),
-        Decimal("300"),
-        Decimal("300"),
-        Decimal("200"),
-    ]
-    size = size_by_stage[min(stage_index, len(size_by_stage) - 1)]
+    depth_notional = _stage_depth_notional(stage_index)
+    bid_size = _depth_size(depth_notional, best_bid)
+    ask_size = _depth_size(depth_notional, best_ask)
     return {
         "bids": [
-            {"side": "BUY", "price": best_bid, "size": size},
+            {"side": "BUY", "price": best_bid, "size": bid_size},
             {
                 "side": "BUY",
                 "price": max(Decimal("0.01"), best_bid - tick_size),
-                "size": size,
+                "size": bid_size,
             },
         ],
         "asks": [
-            {"side": "SELL", "price": best_ask, "size": size},
+            {"side": "SELL", "price": best_ask, "size": ask_size},
             {
                 "side": "SELL",
                 "price": min(Decimal("0.99"), best_ask + tick_size),
-                "size": size,
+                "size": ask_size,
             },
         ],
     }
+
+
+def _stage_real_book_levels(
+    book_levels: dict[str, Any],
+    *,
+    stage_index: int,
+    best_bid: Decimal,
+    best_ask: Decimal,
+) -> dict[str, list[dict[str, Decimal | str]]]:
+    levels = {
+        "bids": _copy_book_levels(book_levels.get("bids"), side="BUY"),
+        "asks": _copy_book_levels(book_levels.get("asks"), side="SELL"),
+    }
+    depth_notional = _stage_depth_notional(stage_index)
+    _ensure_top_depth(
+        levels["bids"],
+        side="BUY",
+        price=best_bid,
+        depth_notional=depth_notional,
+    )
+    _ensure_top_depth(
+        levels["asks"],
+        side="SELL",
+        price=best_ask,
+        depth_notional=depth_notional,
+    )
+    levels["bids"].sort(key=lambda level: Decimal(str(level["price"])), reverse=True)
+    levels["asks"].sort(key=lambda level: Decimal(str(level["price"])))
+    return levels
+
+
+def _copy_book_levels(rows: Any, *, side: str) -> list[dict[str, Decimal | str]]:
+    if not isinstance(rows, list):
+        return []
+    copied: list[dict[str, Decimal | str]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        price = _optional_decimal(row.get("price"))
+        size = _optional_decimal(row.get("size"))
+        if price is None or size is None or size <= 0:
+            continue
+        copied.append({"side": str(row.get("side") or side), "price": price, "size": size})
+    return copied
+
+
+def _ensure_top_depth(
+    levels: list[dict[str, Decimal | str]],
+    *,
+    side: str,
+    price: Decimal,
+    depth_notional: Decimal,
+) -> None:
+    required_size = _depth_size(depth_notional, price)
+    for level in levels:
+        if _optional_decimal(level.get("price")) == price:
+            current_size = _optional_decimal(level.get("size")) or Decimal("0")
+            if current_size < required_size:
+                level["size"] = required_size
+            return
+    levels.append({"side": side, "price": price, "size": required_size})
+
+
+def _stage_depth_notional(stage_index: int) -> Decimal:
+    notional_by_stage = [
+        Decimal("250"),
+        Decimal("300"),
+        Decimal("350"),
+        Decimal("300"),
+        Decimal("250"),
+    ]
+    return notional_by_stage[min(stage_index, len(notional_by_stage) - 1)]
 
 
 def _align_price(value: Decimal, tick_size: Decimal, *, direction: str) -> Decimal:
@@ -465,7 +727,18 @@ def _align_price(value: Decimal, tick_size: Decimal, *, direction: str) -> Decim
     else:
         rounded_units = units.to_integral_value(rounding=ROUND_CEILING)
     return rounded_units * tick_size
-    return markets[0]
+
+
+def _depth_size(depth_notional: Decimal, price: Decimal) -> Decimal:
+    if price <= 0:
+        return depth_notional
+    return depth_notional / price
+
+
+def _slug_run_id(value: str) -> str:
+    cleaned = "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in value)
+    cleaned = "-".join(part for part in cleaned.split("-") if part)
+    return cleaned or "strategy-run"
 
 
 def _global_mode_for_automation(mode: RunMode) -> GlobalMode:

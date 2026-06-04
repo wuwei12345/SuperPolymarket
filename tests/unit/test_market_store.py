@@ -31,7 +31,7 @@ def market(**overrides: object) -> CanonicalMarket:
         "question": "Will this market remain active?",
         "category": "Politics",
         "liquidity": 2500.25,
-        "end_date": datetime(2026, 6, 1, tzinfo=timezone.utc),
+        "end_date": datetime(2099, 6, 1, tzinfo=timezone.utc),
         "condition_id": LONG_CONDITION_ID,
         "yes_token_id": LONG_YES_TOKEN_ID,
         "no_token_id": LONG_NO_TOKEN_ID,
@@ -101,3 +101,18 @@ def test_list_markets_filters_active_accepting_only(tmp_db_path) -> None:
     assert [record.condition_id for record in politics] == ["0x" + "a" * 64]
     assert [record.condition_id for record in liquid] == ["0x" + "b" * 64]
     assert [record.condition_id for record in restricted] == ["0x" + "b" * 64]
+
+
+def test_list_markets_hides_expired_markets(tmp_db_path) -> None:
+    store = MarketStore(tmp_db_path)
+    store.upsert_markets(
+        [
+            market(condition_id="0x" + "a" * 64),
+            market(
+                condition_id="0x" + "b" * 64,
+                end_date=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            ),
+        ]
+    )
+
+    assert [record.condition_id for record in store.list_markets()] == ["0x" + "a" * 64]

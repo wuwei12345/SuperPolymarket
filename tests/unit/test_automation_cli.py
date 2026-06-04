@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import yaml
@@ -14,6 +14,7 @@ from polymarket_quant.domain.automation import (
 from polymarket_quant.domain.strategy import RunMode
 from polymarket_quant.services.automation_cli import (
     AutomationCliService,
+    assign_unique_strategy_run_id,
     build_bootstrap_market_events,
     prepare_strategy_raw_config,
 )
@@ -120,6 +121,7 @@ class FakeMarket:
         yes_token_id: str = "token-yes",
         no_token_id: str = "token-no",
         liquidity: float = 1000.0,
+        end_date: datetime | None = None,
     ) -> None:
         self.market_id = market_id
         self.condition_id = condition_id
@@ -128,6 +130,7 @@ class FakeMarket:
         self.yes_token_id = yes_token_id
         self.no_token_id = no_token_id
         self.liquidity = liquidity
+        self.end_date = end_date
 
 
 class FakeMarketStore:
@@ -243,6 +246,77 @@ def test_prepare_strategy_raw_config_prefers_balanced_bootstrap_market_when_book
     assert prepared["universe"]["token_mappings"][0]["condition_id"] == "condition-balanced"
 
 
+def test_prepare_strategy_raw_config_selects_near_expiry_short_term_markets() -> None:
+    now = datetime.now(timezone.utc)
+    prepared = prepare_strategy_raw_config(
+        {
+            "mode": "realtime_paper",
+            "universe": {
+                "dataset_id": "automation-market-store",
+                "selection_mode": "near_expiry",
+                "max_tokens": 2,
+                "min_minutes_to_expiry": 15,
+                "max_hours_to_expiry": 96,
+                "token_ids": [],
+                "token_mappings": [],
+            },
+        },
+        market_store=FakeMarketStore(
+            [
+                FakeMarket(
+                    market_id="market-far",
+                    condition_id="condition-wide",
+                    yes_token_id="token-wide",
+                    no_token_id="token-wide-no",
+                    liquidity=9000,
+                    end_date=now + timedelta(days=20),
+                ),
+                FakeMarket(
+                    market_id="market-soon",
+                    condition_id="condition-1",
+                    yes_token_id="token-yes",
+                    no_token_id="token-no",
+                    liquidity=1000,
+                    end_date=now + timedelta(hours=2),
+                ),
+                FakeMarket(
+                    market_id="market-next",
+                    condition_id="condition-balanced",
+                    yes_token_id="token-balanced",
+                    no_token_id="token-balanced-no",
+                    liquidity=800,
+                    end_date=now + timedelta(hours=4),
+                ),
+                FakeMarket(
+                    market_id="market-too-soon",
+                    condition_id="condition-too-soon",
+                    yes_token_id="token-wide",
+                    no_token_id="token-wide-no",
+                    liquidity=5000,
+                    end_date=now + timedelta(minutes=5),
+                ),
+            ]
+        ),
+        clob_client=FakeClobClient(),
+    )
+
+    assert prepared["universe"]["token_ids"] == ["token-yes", "token-balanced"]
+    assert prepared["universe"]["token_mappings"][0]["market_id"] == "market-soon"
+    assert prepared["universe"]["token_mappings"][1]["market_id"] == "market-next"
+    assert prepared["universe"]["token_mappings"][0]["end_date"] is not None
+
+
+def test_assign_unique_strategy_run_id_keeps_base_and_adds_timestamp_suffix() -> None:
+    prepared = assign_unique_strategy_run_id(
+        {"run_id": "strategy-daily-001"},
+        strategy_name="scheduled_bootstrap_stress",
+        now=datetime(2026, 4, 30, 3, 30, tzinfo=timezone.utc),
+        suffix="abc12345",
+    )
+
+    assert prepared["run_id"] == "strategy-daily-001-20260430T033000Z-abc12345"
+
+
 def test_build_bootstrap_market_events_uses_live_book_prices() -> None:
     events = build_bootstrap_market_events(
         {
@@ -289,4 +363,4 @@ def test_build_bootstrap_market_events_generates_staged_sequence_for_stress_stra
     book_levels = events[0].payload["by_token"]["token-yes"]["book_levels"]
     assert "bids" in book_levels
     assert "asks" in book_levels
-    assert book_levels["asks"][0]["size"] == 250
+    assert book_levels["asks"][0]["price"] * book_levels["asks"][0]["size"] >= 250

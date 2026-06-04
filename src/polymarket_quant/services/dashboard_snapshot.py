@@ -32,11 +32,15 @@ class DashboardSnapshotService:
         generated_at: datetime | None = None,
     ) -> dict[str, Any]:
         filters = filters or OperatorFilters()
+        latest_strategy_run_id = _recent_strategy_run_id(
+            automation_run
+        ) or self.query_service.latest_strategy_run_id(filters)
         return {
             "schema_version": 1,
             "generated_at": generated_at or utc_now(),
             "automation_run_id": automation_run.run_id if automation_run is not None else None,
-            "recent_run_id": _recent_strategy_run_id(automation_run),
+            "recent_run_id": latest_strategy_run_id,
+            "latest_strategy_run_id": latest_strategy_run_id,
             "recent_report_path": _recent_report_path(automation_run),
             "summary_cards": self.query_service.simulation_summary(filters),
             "curves": self.query_service.simulation_curves(filters),

@@ -4,18 +4,24 @@ mode: realtime_paper
 strategy:
   name: scheduled_bootstrap_stress
   version: "0.1.0"
-  stress_profile: medium
-  stress_max_active_tokens: 10
-  stress_stage_interval_seconds: 20
-  stress_event_trigger_count: 2
+  stress_profile: heavy
+  stress_max_active_tokens: 20
+  stress_stage_interval_seconds: 8
+  stress_event_trigger_count: 1
 universe:
   dataset_id: automation-market-store
+  selection_mode: near_expiry
+  max_tokens: 3
+  min_minutes_to_expiry: 15
+  max_hours_to_expiry: 504
+  candidate_limit: 100
+  min_book_score: 0
   token_ids: []
   token_mappings: []
 risk:
   cash_available: "1000"
-  max_single_order_notional: "100"
-  max_market_position: "500"
-  max_token_position: "500"
+  max_single_order_notional: "300"
+  max_market_position: "1500"
+  max_token_position: "100000"
 execution:
   time_in_force: GTC

@@ -45,7 +45,7 @@ def write_market(store_path: Path) -> None:
                 question="Will it rain tomorrow?",
                 category="Weather",
                 liquidity=1000.0,
-                end_date=instant(),
+                end_date=datetime(2099, 4, 25, 8, 0, tzinfo=timezone.utc),
                 condition_id="condition-1",
                 yes_token_id="token-yes",
                 no_token_id="token-no",

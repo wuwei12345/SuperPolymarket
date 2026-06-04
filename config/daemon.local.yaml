@@ -7,10 +7,10 @@ tasks:
     interval_seconds: 3600
   realtime_health_check:
     enabled: true
-    interval_seconds: 300
+    interval_seconds: 120
   strategy_batch:
     enabled: true
-    interval_seconds: 600
+    interval_seconds: 300
   daily_report:
     enabled: true
     interval_seconds: 86400
