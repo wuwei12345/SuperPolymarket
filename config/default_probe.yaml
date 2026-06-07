@@ -1,0 +1,13 @@
+strategy:
+  name: default_probe
+  risk_level: low
+  stake_per_trade: '10'
+  max_positions: 3
+universe:
+  min_liquidity: '1000'
+  min_volume_24h: '250'
+  max_days_to_expiry: 30
+simulation:
+  starting_cash: '1000'
+  mode: realtime_paper
+  environment: local

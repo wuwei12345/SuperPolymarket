@@ -102,7 +102,8 @@ def test_readme_documents_phase5_operator_console() -> None:
     readme = Path("README.md").read_text()
 
     assert "## Simulation Result Dashboard" in readme
-    assert "streamlit run src/polymarket_quant/ui/operator_console_app.py" in readme
+    assert "streamlit run app.py" in readme
+    assert "Advanced / Debug" in readme
     assert "preflight" in readme
     assert "confirm" in readme
     assert "live-disabled" in readme

@@ -138,7 +138,7 @@ def main() -> None:
     )
     st.dataframe(
         build_latest_display_dataframe(filtered.to_dict(orient="records"), language=language),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 

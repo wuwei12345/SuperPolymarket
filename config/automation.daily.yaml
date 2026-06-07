@@ -15,6 +15,6 @@ report_formats:
 window_policy: calendar_yesterday
 timezone: UTC
 strategies:
-  - name: scheduled_bootstrap_stress
-    strategy_class: polymarket_quant.strategy.scheduled:ScheduledBootstrapStressStrategy
+  - name: default_probe
+    strategy_class: polymarket_quant.strategy.default_probe:DefaultProbeStrategy
     config_path: strategy.daily.yaml

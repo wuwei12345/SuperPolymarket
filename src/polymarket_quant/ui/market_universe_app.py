@@ -134,7 +134,7 @@ def main() -> None:
         st.title(t(language, "market_universe.page_title"))
         st.caption(t(language, "market_universe.caption"))
     with header_right:
-        if st.button(t(language, "market_universe.primary_cta"), use_container_width=True):
+        if st.button(t(language, "market_universe.primary_cta"), width="stretch"):
             service = MarketSyncService(
                 gamma_client=GammaClient(),
                 clob_client=ClobClient(),
@@ -155,7 +155,7 @@ def main() -> None:
 
     st.dataframe(
         display_df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             t(language, "market_universe.col_liquidity"): st.column_config.NumberColumn(

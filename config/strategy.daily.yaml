@@ -1,27 +1,35 @@
-run_id: strategy-daily-001
+run_id: default-probe-daily
 environment: local
 mode: realtime_paper
 strategy:
-  name: scheduled_bootstrap_stress
+  name: default_probe
   version: "0.1.0"
-  stress_profile: heavy
-  stress_max_active_tokens: 20
-  stress_stage_interval_seconds: 8
-  stress_event_trigger_count: 1
+  risk_level: low
+  stake_per_trade: "10"
+  max_positions: 3
+  min_liquidity: "1000"
+  min_volume_24h: "250"
+  confidence: "0.55"
 universe:
-  dataset_id: automation-market-store
+  dataset_id: default-probe-market-store
   selection_mode: near_expiry
   max_tokens: 3
   min_minutes_to_expiry: 15
-  max_hours_to_expiry: 504
+  max_hours_to_expiry: 720
   candidate_limit: 100
-  min_book_score: 0
+  min_book_score: 3
+  min_liquidity: "1000"
+  min_volume_24h: "250"
   token_ids: []
   token_mappings: []
+sizing:
+  target_exposure_mode: notional
 risk:
   cash_available: "1000"
-  max_single_order_notional: "300"
-  max_market_position: "1500"
-  max_token_position: "100000"
+  max_single_order_notional: "10"
+  max_market_position: "10"
+  max_token_position: "2000"
+  portfolio_exposure_warning: "30"
 execution:
   time_in_force: GTC
+  post_only: false

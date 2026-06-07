@@ -169,3 +169,34 @@ OPERATOR_CONSOLE_LAYOUT = {
     "details": "secondary-run-details",
     "timeline": "secondary-debug",
 }
+
+SIMULATION_APP_PAGE_TITLE = "SuperPolymarket"
+SIMULATION_APP_PAGES = [
+    "Dashboard",
+    "Markets",
+    "Strategy",
+    "Advanced / Debug",
+]
+SIMULATION_APP_HOME_SECTIONS = [
+    "Results",
+    "Return Curve",
+    "Markets",
+    "Current Positions",
+    "Recent Actions",
+    "Risk Summary",
+]
+SIMULATION_APP_HOME_FORBIDDEN_TERMS = [
+    "run_id",
+    "manifest",
+    "artifact",
+    "strategy.log",
+    "framework.log",
+    "timeline",
+    "condition_id",
+    "token_id",
+]
+PRODUCT_STRATEGY_SIMPLE_FIELDS = [
+    "risk_level",
+    "stake_per_trade",
+    "max_positions",
+]

@@ -6,6 +6,24 @@ Simulation-first Polymarket research system for building a canonical market univ
 
 - [docs/新手使用说明与测试用例.md](docs/新手使用说明与测试用例.md)
 
+## SuperPolymarket App
+
+Run the beginner-facing simulation app:
+
+```bash
+streamlit run app.py
+```
+
+The first screen is result-first and hides technical run metadata by default. It shows total PnL, today PnL, realized/unrealized PnL, the return curve, current simulated positions, recent simulated actions, Polymarket-style market cards, and the risk summary.
+
+The app includes a `Language` selector for English and Chinese UI copy. The default strategy is `DefaultProbeStrategy`, configured from YAML and designed for small, simulation-only paper probes.
+
+Primary beginner config:
+
+- [config/default_probe.yaml](/Users/wuwei/Documents/polymarketQuantification/config/default_probe.yaml)
+
+Technical pages for market sync, market data, runs, artifacts, manifests, logs, and timelines remain available from `Advanced / Debug` or by running their direct Streamlit entrypoints.
+
 ## Phase 1 Market Universe UI
 
 Run the Phase 1 browser page:
@@ -153,10 +171,10 @@ Run summaries are computed from factual artifacts, not log scraping. Phase 4 met
 
 ## Simulation Result Dashboard
 
-Run the browser page:
+Run the main browser app:
 
 ```bash
-streamlit run src/polymarket_quant/ui/operator_console_app.py
+streamlit run app.py
 ```
 
 The first screen is now result-first. It reads `data/runtime/latest_snapshot.json` when available, then falls back to strategy artifacts under `data/runs`.
@@ -172,9 +190,7 @@ Default dashboard sections:
 
 Technical operator views are still available from the page selector:
 
-- `Run Details`: strategy overview, positions/orders, PnL/exposure, artifacts
-- `System Health`: connection state and guarded mode switch
-- `Debug`: full alert timeline and low-level troubleshooting
+- `Advanced / Debug`: strategy overview, positions/orders, PnL/exposure, artifacts, connection state, guarded mode switch, full alert timeline, and low-level troubleshooting
 
 Mode changes are guarded. The console requires a `preflight` step first, shows blocking and warning reasons, and only applies the switch after explicit `confirm` input.
 
@@ -193,6 +209,7 @@ Primary config:
 
 - [config/automation.daily.yaml](/Users/wuwei/Documents/polymarketQuantification/config/automation.daily.yaml)
 - [config/strategy.daily.yaml](/Users/wuwei/Documents/polymarketQuantification/config/strategy.daily.yaml)
+- [config/default_probe.yaml](/Users/wuwei/Documents/polymarketQuantification/config/default_probe.yaml)
 
 Run it manually:
 

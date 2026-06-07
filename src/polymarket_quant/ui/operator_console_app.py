@@ -352,7 +352,7 @@ def render_simulation_dashboard(
         if market_cards.empty:
             st.caption(t(language, "operator.no_positions"))
             market_cards = build_simulation_positions_dataframe(position_rows, language=language)
-        st.dataframe(market_cards, use_container_width=True, hide_index=True)
+        st.dataframe(market_cards, width="stretch", hide_index=True)
     with right:
         render_risk_summary(alert_summary, language=language)
 
@@ -362,7 +362,7 @@ def render_simulation_dashboard(
         trades = build_simulation_trades_dataframe(trade_rows, language=language)
     if trades.empty:
         st.caption(t(language, "operator.no_trades"))
-    st.dataframe(trades, use_container_width=True, hide_index=True)
+    st.dataframe(trades, width="stretch", hide_index=True)
 
 
 def render_run_details_page(
@@ -381,7 +381,7 @@ def render_run_details_page(
     st.subheader(t(language, "operator.overview"))
     st.dataframe(
         build_overview_dataframe(overview_rows, language=language),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
     left, right = st.columns(2)
@@ -418,7 +418,7 @@ def render_debug_page(
     st.caption(t(language, "operator.timeline_caption"))
     st.dataframe(
         build_timeline_dataframe(query_service.alerts_timeline(filters), language=language),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
     render_runs_artifacts_surface(query_service, filters, language=language, expanded=False)
@@ -458,13 +458,13 @@ def render_result_curves(rows: list[dict[str, Any]], *, language: str = "en") ->
     left, middle, right = st.columns(3)
     with left:
         st.caption(t(language, "operator.pnl_equity_curve"))
-        st.line_chart(curves, x="ts", y=["pnl", "equity"], use_container_width=True)
+        st.line_chart(curves, x="ts", y=["pnl", "equity"], width="stretch")
     with middle:
         st.caption(t(language, "operator.drawdown_curve"))
-        st.line_chart(curves, x="ts", y="drawdown", use_container_width=True)
+        st.line_chart(curves, x="ts", y="drawdown", width="stretch")
     with right:
         st.caption(t(language, "operator.exposure_curve"))
-        st.line_chart(curves, x="ts", y="exposure", use_container_width=True)
+        st.line_chart(curves, x="ts", y="exposure", width="stretch")
 
 
 def render_risk_summary(alert_summary: dict[str, Any], *, language: str = "en") -> None:
@@ -491,7 +491,7 @@ def render_risk_summary(alert_summary: dict[str, Any], *, language: str = "en") 
             )
         )
     latest = build_timeline_dataframe(alert_summary.get("latest", []), language=language)
-    st.dataframe(latest, use_container_width=True, hide_index=True)
+    st.dataframe(latest, width="stretch", hide_index=True)
 
 
 def render_shared_filters() -> OperatorFilters:
@@ -695,7 +695,7 @@ def render_positions_orders_block(
             pane="Positions" if pane == t(language, "operator.positions") else "Orders",
             language=language,
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -707,7 +707,7 @@ def render_pnl_exposure_block(pnl_rows: list[dict[str, Any]], *, language: str =
     st.caption(t(language, "operator.detail_pnl_exposure"))
     st.dataframe(
         build_pnl_exposure_dataframe(pnl_rows, language=language),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -725,7 +725,7 @@ def render_runs_artifacts_surface(
         st.caption(t(language, "operator.runs_artifacts_caption"))
         st.dataframe(
             pd.DataFrame(query_service.runs_artifacts(filters)),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -841,7 +841,7 @@ def _localize_state(value: str, *, language: str = "en") -> str:
         "paused": t(language, "operator.status_paused"),
         "error": t(language, "operator.status_error"),
         "finished": t(language, "operator.status_finished"),
-        "starting": "starting" if language == "en" else "启动中",
+        "starting": t(language, "operator.status_starting"),
     }
     return mapping.get(value, value)
 

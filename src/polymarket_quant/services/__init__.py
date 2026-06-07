@@ -24,11 +24,19 @@ __all__ = [
     "OperatorSafetyService",
     "PaperExchangeService",
     "PaperOrderResult",
+    "ProductStrategyConfig",
     "RealtimeStrategyRunner",
+    "RiskLevel",
     "RuntimeStateStore",
     "SignalExecutionService",
     "StrategyCliService",
     "UniverseSelector",
+    "default_product_strategy_config",
+    "dump_product_strategy_config",
+    "load_product_strategy_config",
+    "parse_product_strategy_config",
+    "product_config_to_runtime_config",
+    "save_product_strategy_config",
 ]
 
 
@@ -89,9 +97,17 @@ _EXPORTS = {
         "polymarket_quant.services.paper_exchange",
         "PaperOrderResult",
     ),
+    "ProductStrategyConfig": (
+        "polymarket_quant.services.product_strategy_config",
+        "ProductStrategyConfig",
+    ),
     "RealtimeStrategyRunner": (
         "polymarket_quant.services.realtime_strategy_runner",
         "RealtimeStrategyRunner",
+    ),
+    "RiskLevel": (
+        "polymarket_quant.services.product_strategy_config",
+        "RiskLevel",
     ),
     "RuntimeStateStore": (
         "polymarket_quant.services.runtime_state_store",
@@ -108,6 +124,30 @@ _EXPORTS = {
     "UniverseSelector": (
         "polymarket_quant.services.universe_selector",
         "UniverseSelector",
+    ),
+    "default_product_strategy_config": (
+        "polymarket_quant.services.product_strategy_config",
+        "default_product_strategy_config",
+    ),
+    "dump_product_strategy_config": (
+        "polymarket_quant.services.product_strategy_config",
+        "dump_product_strategy_config",
+    ),
+    "load_product_strategy_config": (
+        "polymarket_quant.services.product_strategy_config",
+        "load_product_strategy_config",
+    ),
+    "parse_product_strategy_config": (
+        "polymarket_quant.services.product_strategy_config",
+        "parse_product_strategy_config",
+    ),
+    "product_config_to_runtime_config": (
+        "polymarket_quant.services.product_strategy_config",
+        "product_config_to_runtime_config",
+    ),
+    "save_product_strategy_config": (
+        "polymarket_quant.services.product_strategy_config",
+        "save_product_strategy_config",
     ),
 }
 
